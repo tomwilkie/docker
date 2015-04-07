@@ -1,0 +1,73 @@
+'Design' choices:
+- choose verb plug and unplug (vs attach and detach) so we don't clash with container attach
+- containers can have multiple endpoints on a given network implies unplug takes container id and endpoint id
+
+Next steps are:
+- <s>boilerplate, internal datastructures</s>
+- <s>find appropriate hook in points for plug</s>
+- <s>docker run support</s>
+- <s>find appropriate hook for unplug</s>
+- <s>move code out of subdir to avoid circular imports</s>
+- make a plausible default/simple bridge driver
+- persistence and tear down / setup (in network/collection.go)
+- transport to external plugins (lukestensions?)
+- implement weave plugin.
+- make plug work for running containers
+
+Little things
+- <s>Make net create cli print id of network</s>
+- <s>Make net plug print id of endpoint</s>
+- Shorten network id in list
+- Show interfaces and network on docker inspect; show containers on docker net list
+
+Open Questions:
+- <s>Should networks have ids and names (both unique)</s> Yes
+- <s>Should endpoints have names?</s> No, just IDs
+- libcontainer doesn't seem to have code to add veth pair to running container - should we add it there?
+- What is 'container mode' networking, and could we use that to fake out this whole thing?
+- Endpoints will need references to containers (ids/names at least); need to deal with circular references in json encoding
+
+
+Basic walkthrough:
+
+# docker net create --driver noop
+67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1
+# docker net list
+NETWORK ID                                                         NAME                DRIVER              LABELS
+67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1   stupefied_fermi     noop                {}
+# docker create -i ubuntu /bin/bash
+5e24637c4a1a8cfd2d5b44a1041496b9a599ba986349b636fd615126bd3e9a82
+# docker ps -a
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+5e24637c4a1a        ubuntu:latest       "/bin/bash"         4 seconds ago                                               backstabbing_hopper
+# docker net plug backstabbing_hopper stupefied_fermi
+5a624939c64c751c6276f852c2a01e54de49ba2894d922a07feebd2c56834900
+# docker start -i backstabbing_hopper
+>
+> ifconfig -a
+eth0      Link encap:Ethernet  HWaddr 02:42:0a:00:00:02
+          inet addr:10.0.0.2  Bcast:0.0.0.0  Mask:255.255.0.0
+          inet6 addr: fe80::42:aff:fe00:2/64 Scope:Link
+          UP BROADCAST RUNNING  MTU:1500  Metric:1
+          RX packets:16 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:8 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:1296 (1.2 KB)  TX bytes:648 (648.0 B)
+
+eth1      Link encap:Ethernet  HWaddr 02:42:0a:03:00:01
+          inet addr:10.0.0.6  Bcast:0.0.0.0  Mask:255.255.0.0
+          inet6 addr: fe80::42:aff:fe03:1/64 Scope:Link
+          UP BROADCAST RUNNING  MTU:1500  Metric:1
+          RX packets:15 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:8 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:1206 (1.2 KB)  TX bytes:648 (648.0 B)
+
+lo        Link encap:Local Loopback
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:65536  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)

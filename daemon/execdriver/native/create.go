@@ -88,6 +88,30 @@ func generateIfaceName() (string, error) {
 	return "", errors.New("Failed to find name for new interface")
 }
 
+func (d *driver) createInterface(net *execdriver.Network, inf *execdriver.NetworkInterface, container *configs.Config, i int) error {
+	iName, err := generateIfaceName()
+	if err != nil {
+		return err
+	}
+
+	vethNetwork := configs.Network{
+		Name:              fmt.Sprintf("eth%d", i),
+		HostInterfaceName: iName,
+		Mtu:               net.Mtu,
+		Address:           fmt.Sprintf("%s/%d", inf.IPAddress, inf.IPPrefixLen),
+		MacAddress:        inf.MacAddress,
+		Gateway:           inf.Gateway,
+		Type:              "veth",
+		Bridge:            inf.Bridge,
+	}
+	if inf.GlobalIPv6Address != "" {
+		vethNetwork.IPv6Address = fmt.Sprintf("%s/%d", inf.GlobalIPv6Address, inf.GlobalIPv6PrefixLen)
+		vethNetwork.IPv6Gateway = inf.IPv6Gateway
+	}
+	container.Networks = append(container.Networks, &vethNetwork)
+	return nil
+}
+
 func (d *driver) createNetwork(container *configs.Config, c *execdriver.Command) error {
 	if c.Network.HostNetworking {
 		container.Namespaces.Remove(configs.NEWNET)
@@ -100,26 +124,20 @@ func (d *driver) createNetwork(container *configs.Config, c *execdriver.Command)
 		},
 	}
 
-	iName, err := generateIfaceName()
-	if err != nil {
-		return err
-	}
+	i := 0
 	if c.Network.Interface != nil {
-		vethNetwork := configs.Network{
-			Name:              "eth0",
-			HostInterfaceName: iName,
-			Mtu:               c.Network.Mtu,
-			Address:           fmt.Sprintf("%s/%d", c.Network.Interface.IPAddress, c.Network.Interface.IPPrefixLen),
-			MacAddress:        c.Network.Interface.MacAddress,
-			Gateway:           c.Network.Interface.Gateway,
-			Type:              "veth",
-			Bridge:            c.Network.Interface.Bridge,
+		err := d.createInterface(c.Network, c.Network.Interface, container, i)
+		i++
+		if err != nil {
+			return err
 		}
-		if c.Network.Interface.GlobalIPv6Address != "" {
-			vethNetwork.IPv6Address = fmt.Sprintf("%s/%d", c.Network.Interface.GlobalIPv6Address, c.Network.Interface.GlobalIPv6PrefixLen)
-			vethNetwork.IPv6Gateway = c.Network.Interface.IPv6Gateway
+	}
+	for _, inf := range c.Network.Interfaces {
+		err := d.createInterface(c.Network, inf, container, i)
+		i++
+		if err != nil {
+			return err
 		}
-		container.Networks = append(container.Networks, &vethNetwork)
 	}
 
 	if c.Network.ContainerID != "" {

@@ -112,6 +112,7 @@ type Daemon struct {
 	defaultLogConfig runconfig.LogConfig
 	RegistryService  *registry.Service
 	EventsService    *events.Events
+	networks         NetworkRegistry
 }
 
 // Install installs daemon capabilities to eng.
@@ -627,6 +628,11 @@ func (daemon *Daemon) newContainer(name string, config *runconfig.Config, imgID 
 	daemon.generateHostname(id, config)
 	entrypoint, args := daemon.getEntrypointAndArgs(config.Entrypoint, config.Cmd)
 
+	endpoints, err := daemon.endpointsOnNetworks(config.Networks)
+	if err != nil {
+		return nil, err
+	}
+
 	container := &Container{
 		// FIXME: we should generate the ID here instead of receiving it as an argument
 		ID:              id,
@@ -642,6 +648,7 @@ func (daemon *Daemon) newContainer(name string, config *runconfig.Config, imgID 
 		ExecDriver:      daemon.execDriver.Name(),
 		State:           NewState(),
 		execCommands:    newExecStore(),
+		Endpoints:       endpoints,
 	}
 	container.root = daemon.containerRoot(container.ID)
 	return container, err
@@ -996,6 +1003,7 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine, registryService 
 		defaultLogConfig: config.LogConfig,
 		RegistryService:  registryService,
 		EventsService:    eventsService,
+		networks:         NewNetworkRegistry(),
 	}
 
 	eng.OnShutdown(func() {

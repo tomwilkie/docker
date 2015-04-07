@@ -578,6 +578,16 @@ func getContainersLogs(eng *engine.Engine, version version.Version, w http.Respo
 	return nil
 }
 
+func getNetworksJSON(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
+	if err := parseForm(r); err != nil {
+		return err
+	}
+
+	d := getDaemon(eng)
+	networks := d.NetworkList()
+	return writeJSON(w, http.StatusOK, networks)
+}
+
 func postImagesTag(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
 	if err := parseForm(r); err != nil {
 		return err
@@ -924,6 +934,14 @@ func deleteImages(eng *engine.Engine, version version.Version, w http.ResponseWr
 	return writeJSON(w, http.StatusOK, list)
 }
 
+func deleteNetworks(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
+	if err := parseForm(r); err != nil {
+		return err
+	}
+	d := getDaemon(eng)
+	return d.NetworkDestroy(vars["name"])
+}
+
 func postContainersStart(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
 	if vars == nil {
 		return fmt.Errorf("Missing parameter")
@@ -1086,6 +1104,94 @@ func postContainersAttach(eng *engine.Engine, version version.Version, w http.Re
 		fmt.Fprintf(outStream, "Error attaching: %s\n", err)
 	}
 	return nil
+}
+
+func getString(name string, body map[string]interface{}) (string, error) {
+	inf, found := body[name]
+	if !found {
+		return "", fmt.Errorf("Must specify %s", name)
+	}
+
+	value, ok := inf.(string)
+	if !ok {
+		return "", fmt.Errorf("%s must be a string", name)
+	}
+
+	return value, nil
+}
+
+func getLabels(body map[string]interface{}) (map[string]string, error) {
+	inf, found := body["Labels"]
+	if !found {
+		return nil, fmt.Errorf("Must specify Labels")
+	}
+
+	value, ok := inf.(map[string]string)
+	if !ok {
+		return nil, fmt.Errorf("Labels must be a map[string]string")
+	}
+
+	return value, nil
+}
+
+func postNetworkCreate(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
+	if err := parseForm(r); err != nil {
+		return err
+	}
+	if err := checkForJson(r); err != nil {
+		return err
+	}
+
+	body := make(map[string]interface{})
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&body); err != nil {
+		return err
+	}
+
+	driver, err := getString("Driver", body)
+	if err != nil {
+		return err
+	}
+
+	labels, err := getLabels(body)
+	if err != nil {
+		return err
+	}
+
+	d := getDaemon(eng)
+	id, err := d.NetworkCreate(vars["name"], driver, labels)
+	if err != nil {
+		return err
+	}
+
+	return writeJSON(w, http.StatusCreated, &types.NetworkResponse{
+		ID: id,
+	})
+}
+
+func postNetworkPlug(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
+	if err := parseForm(r); err != nil {
+		return err
+	}
+
+	d := getDaemon(eng)
+	id, err := d.NetworkPlug(vars["name"], vars["network"])
+	if err != nil {
+		return err
+	}
+
+	return writeJSON(w, http.StatusCreated, &types.NetworkPlugResponse{
+		ID: id,
+	})
+}
+
+func postNetworkUnplug(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
+	if err := parseForm(r); err != nil {
+		return err
+	}
+
+	d := getDaemon(eng)
+	return d.NetworkUnplug(vars["name"], vars["endpoint"])
 }
 
 func wsContainersAttach(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
@@ -1483,6 +1589,7 @@ func createRouter(eng *engine.Engine, logging, enableCors bool, corsHeaders stri
 			"/containers/{name:.*}/stats":     getContainersStats,
 			"/containers/{name:.*}/attach/ws": wsContainersAttach,
 			"/exec/{id:.*}/json":              getExecByID,
+			"/networks/json":                  getNetworksJSON,
 		},
 		"POST": {
 			"/auth":                         postAuth,
@@ -1507,10 +1614,15 @@ func createRouter(eng *engine.Engine, logging, enableCors bool, corsHeaders stri
 			"/exec/{name:.*}/start":         postContainerExecStart,
 			"/exec/{name:.*}/resize":        postContainerExecResize,
 			"/containers/{name:.*}/rename":  postContainerRename,
+
+			"/container/{name:.*}/plug/{network:.*}":    postNetworkPlug,
+			"/container/{name:.*}/unplug/{endpoint:.*}": postNetworkUnplug,
+			"/networks/{name:.*}":                       postNetworkCreate,
 		},
 		"DELETE": {
 			"/containers/{name:.*}": deleteContainers,
 			"/images/{name:.*}":     deleteImages,
+			"/networks/{name:.*}":   deleteNetworks,
 		},
 		"OPTIONS": {
 			"": optionsHandler,

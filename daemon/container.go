@@ -110,6 +110,8 @@ type Container struct {
 	logDriver          logger.Logger
 	logCopier          *logger.Copier
 	AppliedVolumesFrom map[string]struct{}
+
+	Endpoints []*Endpoint
 }
 
 func (container *Container) FromDisk() error {
@@ -292,6 +294,15 @@ func populateCommand(c *Container, env []string) error {
 		en.ContainerID = nc.ID
 	default:
 		return fmt.Errorf("invalid network mode: %s", c.hostConfig.NetworkMode)
+	}
+
+	// Plug enpoints for new network model
+	for _, endpoint := range c.Endpoints {
+		inf, err := endpoint.Plug(c.daemon)
+		if err != nil {
+			return err
+		}
+		en.Interfaces = append(en.Interfaces, inf)
 	}
 
 	ipc := &execdriver.Ipc{}
@@ -688,6 +699,12 @@ func (container *Container) cleanup() {
 
 	if err := container.Unmount(); err != nil {
 		logrus.Errorf("%v: Failed to umount filesystem: %v", container.ID, err)
+	}
+
+	for _, endpoint := range container.Endpoints {
+		if err := endpoint.Unplug(container.daemon); err != nil {
+			logrus.Errorf("%v: Failed to unplug enpoint %s - %s", container.ID, endpoint.ID, err)
+		}
 	}
 
 	for _, eConfig := range container.execCommands.s {
@@ -1533,4 +1550,13 @@ func (c *Container) LogDriverType() string {
 		return c.daemon.defaultLogConfig.Type
 	}
 	return c.hostConfig.LogConfig.Type
+}
+
+func (c *Container) GetEndpoint(id string) (int, *Endpoint) {
+	for i, e := range c.Endpoints {
+		if e.ID == id {
+			return i, e
+		}
+	}
+	return -1, nil
 }

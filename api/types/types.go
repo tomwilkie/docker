@@ -10,6 +10,23 @@ type ContainerCreateResponse struct {
 	Warnings []string `json:"Warnings"`
 }
 
+// NetworkResponse contains the information returned to a client on the
+// creation of a new network.
+type NetworkResponse struct {
+	// ID is the ID of the created container.
+	ID     string `json:"Id"`
+	Name   string
+	Driver string
+	Labels map[string]string
+}
+
+// NetworkCreateResponse contains the information returned to a client on the
+// creation of a new network.
+type NetworkPlugResponse struct {
+	// ID is the ID of the created container.
+	ID string `json:"Id"`
+}
+
 // POST /containers/{name:.*}/exec
 type ContainerExecCreateResponse struct {
 	// ID is the exec ID.
