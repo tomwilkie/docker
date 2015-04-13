@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/execdriver"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/daemon/networkdriver/simplebridge"
 	"github.com/docker/docker/pkg/namesgenerator"
 	"github.com/docker/docker/pkg/stringid"
 )
@@ -255,6 +257,8 @@ func (e *Endpoint) Plug(daemon *Daemon) (*execdriver.NetworkInterface, error) {
 		return nil, err
 	}
 
+	logrus.Infof("Plug %+v", inf)
+
 	return inf, nil
 }
 
@@ -281,6 +285,7 @@ var drivers map[string]Driver
 func init() {
 	drivers = make(map[string]Driver)
 	RegisterNetworkDriver("noop", noopDriver{})
+	RegisterNetworkDriver("simplebridge", simpleBridgeDriver{make(map[string]*simplebridge.Network)})
 }
 
 func GetNetworkDriver(name string) (Driver, bool) {
@@ -292,6 +297,7 @@ func RegisterNetworkDriver(name string, driver Driver) {
 	drivers[name] = driver
 }
 
+// Noop network driver just does what its told to; communication is done via labels
 type noopDriver struct{}
 
 func (n noopDriver) Create(network *Network) error  { return nil }
@@ -306,3 +312,52 @@ func (n noopDriver) Plug(network *Network, endpoint *Endpoint) (*execdriver.Netw
 	}, nil
 }
 func (n noopDriver) Unplug(network *Network, endpoint *Endpoint) error { return nil }
+
+// SimpleBridge drivers
+type simpleBridgeDriver struct {
+	networks map[string]*simplebridge.Network
+}
+
+func (s simpleBridgeDriver) Create(network *Network) error {
+	net, err := simplebridge.NewNetwork(network.Labels)
+	if err != nil {
+		return err
+	}
+
+	err = net.Setup()
+	if err != nil {
+		return err
+	}
+
+	s.networks[network.ID] = net
+	return nil
+}
+
+func (s simpleBridgeDriver) Destroy(network *Network) error {
+	// TODO, implement
+	return nil
+}
+
+func (s simpleBridgeDriver) Plug(network *Network, endpoint *Endpoint) (*execdriver.NetworkInterface, error) {
+	net, found := s.networks[network.ID]
+	if !found {
+		return nil, fmt.Errorf("Network '%s' not found", network.ID)
+	}
+
+	inf, err := net.Allocate(endpoint.ID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return inf, nil
+}
+
+func (s simpleBridgeDriver) Unplug(network *Network, endpoint *Endpoint) error {
+	net, found := s.networks[network.ID]
+	if !found {
+		return fmt.Errorf("Network '%s' not found", network.ID)
+	}
+
+	err := net.Release(endpoint.ID)
+	return err
+}
