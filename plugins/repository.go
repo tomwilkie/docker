@@ -10,8 +10,11 @@ var Repo = NewRepository()
 
 var ErrNotRegistered = errors.New("plugin type is not registered")
 
+type RegisterFunc func(string, *Plugin) error
+
 type Repository struct {
-	plugins map[string]Plugins
+	supported map[string]RegisterFunc
+	plugins   map[string]Plugins
 }
 
 type Plugins []*Plugin
@@ -28,14 +31,19 @@ func (repository *Repository) GetPlugins(kind string) (Plugins, error) {
 	return plugins, nil
 }
 
-var supportedPluginTypes = map[string]struct{}{
-	"volume": {},
-}
-
 func NewRepository() *Repository {
 	return &Repository{
-		plugins: make(map[string]Plugins),
+		plugins:   make(map[string]Plugins),
+		supported: make(map[string]RegisterFunc),
 	}
+}
+
+func (repository *Repository) AddType(kind string, register RegisterFunc) error {
+	if _, exists := repository.supported[kind]; exists {
+		return fmt.Errorf("Registration for plugin kind '%s' already added", kind)
+	}
+	repository.supported[kind] = register
+	return nil
 }
 
 func (repository *Repository) RegisterPlugin(addr string) error {
@@ -46,7 +54,11 @@ func (repository *Repository) RegisterPlugin(addr string) error {
 	}
 
 	for _, interest := range resp.InterestedIn {
-		if _, exists := supportedPluginTypes[interest]; !exists {
+		var (
+			register RegisterFunc
+			exists   bool
+		)
+		if register, exists = repository.supported[interest]; !exists {
 			return fmt.Errorf("plugin type %s is not supported", interest)
 		}
 
@@ -55,6 +67,7 @@ func (repository *Repository) RegisterPlugin(addr string) error {
 		}
 		plugin.kind = interest
 		repository.plugins[interest] = append(repository.plugins[interest], plugin)
+		register(resp.Name, plugin)
 	}
 
 	return nil
