@@ -387,6 +387,10 @@ func (n Network) Setup() error {
 	return nil
 }
 
+func (n Network) Destroy() error {
+	return netlink.NetworkLinkDel(n.bridgeIface)
+}
+
 func (n Network) setupIPTables() error {
 	// Enable NAT
 

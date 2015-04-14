@@ -89,7 +89,7 @@ func (daemon *Daemon) NetworkDestroy(id string) error {
 		return fmt.Errorf("Network '%s' not found", id)
 	}
 
-	if err := net.DestroyNetwork(); err != nil {
+	if err := net.Destroy(); err != nil {
 		return err
 	}
 
@@ -209,6 +209,15 @@ func (reg *NetworkRegistry) Walk(f func(network *Network)) {
 	}
 }
 
+func (reg *NetworkRegistry) Shutdown() {
+	reg.Lock()
+	defer reg.Unlock()
+
+	for _, network := range reg.networks {
+		network.Destroy()
+	}
+}
+
 func NewNetwork(networkName, driverName string, labels map[string]string) (*Network, error) {
 	driver, okay := GetNetworkDriver(driverName)
 	if !okay {
@@ -228,7 +237,7 @@ func NewNetwork(networkName, driverName string, labels map[string]string) (*Netw
 	return network, nil
 }
 
-func (net *Network) DestroyNetwork() error {
+func (net *Network) Destroy() error {
 	driver, okay := GetNetworkDriver(net.Driver)
 	if !okay {
 		return fmt.Errorf("Driver '%s' not found", net.Driver)
@@ -284,7 +293,6 @@ var drivers map[string]Driver
 
 func init() {
 	drivers = make(map[string]Driver)
-	RegisterNetworkDriver("noop", noopDriver{})
 	RegisterNetworkDriver("simplebridge", simpleBridgeDriver{make(map[string]*simplebridge.Network)})
 }
 
@@ -296,22 +304,6 @@ func GetNetworkDriver(name string) (Driver, bool) {
 func RegisterNetworkDriver(name string, driver Driver) {
 	drivers[name] = driver
 }
-
-// Noop network driver just does what its told to; communication is done via labels
-type noopDriver struct{}
-
-func (n noopDriver) Create(network *Network) error  { return nil }
-func (n noopDriver) Destroy(network *Network) error { return nil }
-func (n noopDriver) Plug(network *Network, endpoint *Endpoint) (*execdriver.NetworkInterface, error) {
-	return &execdriver.NetworkInterface{
-		Gateway:     "",
-		IPAddress:   "10.0.0.6",
-		IPPrefixLen: 16,
-		MacAddress:  "02:42:0a:03:00:01",
-		Bridge:      "docker0",
-	}, nil
-}
-func (n noopDriver) Unplug(network *Network, endpoint *Endpoint) error { return nil }
 
 // SimpleBridge drivers
 type simpleBridgeDriver struct {
@@ -334,8 +326,13 @@ func (s simpleBridgeDriver) Create(network *Network) error {
 }
 
 func (s simpleBridgeDriver) Destroy(network *Network) error {
-	// TODO, implement
-	return nil
+	net, found := s.networks[network.ID]
+	if !found {
+		return fmt.Errorf("Network '%s' not found", network.ID)
+	}
+
+	delete(s.networks, network.ID)
+	return net.Destroy()
 }
 
 func (s simpleBridgeDriver) Plug(network *Network, endpoint *Endpoint) (*execdriver.NetworkInterface, error) {
