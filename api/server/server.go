@@ -1152,8 +1152,7 @@ func postNetworkCreate(eng *engine.Engine, version version.Version, w http.Respo
 	}
 
 	body := make(map[string]interface{})
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		return err
 	}
 
@@ -1183,8 +1182,18 @@ func postNetworkPlug(eng *engine.Engine, version version.Version, w http.Respons
 		return err
 	}
 
+	body := make(map[string]interface{})
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return err
+	}
+
+	labels, err := getLabels(body)
+	if err != nil {
+		return err
+	}
+
 	d := getDaemon(eng)
-	id, err := d.NetworkPlug(vars["name"], vars["network"])
+	id, err := d.NetworkPlug(vars["name"], vars["network"], labels)
 	if err != nil {
 		return err
 	}
