@@ -95,7 +95,7 @@ func (daemon *Daemon) NetworkDestroy(id string) error {
 	return nil
 }
 
-func (daemon *Daemon) endpointOnNetwork(namesOrId string) (*Endpoint, error) {
+func (daemon *Daemon) endpointOnNetwork(namesOrId string, labels map[string]string) (*Endpoint, error) {
 	net := daemon.networks.Get(namesOrId)
 	if net == nil {
 		return nil, fmt.Errorf("Network '%s' not found", namesOrId)
@@ -104,13 +104,14 @@ func (daemon *Daemon) endpointOnNetwork(namesOrId string) (*Endpoint, error) {
 	return &Endpoint{
 		ID:      stringid.GenerateRandomID(),
 		Network: net.ID,
+		Labels:  labels,
 	}, nil
 }
 
 func (daemon *Daemon) endpointsOnNetworks(namesOrIds []string) ([]*Endpoint, error) {
 	var result []*Endpoint
 	for _, nameOrId := range namesOrIds {
-		endpoint, err := daemon.endpointOnNetwork(nameOrId)
+		endpoint, err := daemon.endpointOnNetwork(nameOrId, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -119,7 +120,7 @@ func (daemon *Daemon) endpointsOnNetworks(namesOrIds []string) ([]*Endpoint, err
 	return result, nil
 }
 
-func (daemon *Daemon) NetworkPlug(containerID, nameOrId string) (string, error) {
+func (daemon *Daemon) NetworkPlug(containerID, nameOrId string, labels map[string]string) (string, error) {
 	daemon.networks.Lock()
 	defer daemon.networks.Unlock()
 
@@ -132,7 +133,7 @@ func (daemon *Daemon) NetworkPlug(containerID, nameOrId string) (string, error) 
 		return "", fmt.Errorf("Cannot plug in running container (yet)")
 	}
 
-	endpoint, err := daemon.endpointOnNetwork(nameOrId)
+	endpoint, err := daemon.endpointOnNetwork(nameOrId, labels)
 	if err != nil {
 		return "", err
 	}

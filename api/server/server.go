@@ -1126,12 +1126,21 @@ func getLabels(body map[string]interface{}) (map[string]string, error) {
 		return nil, fmt.Errorf("Must specify Labels")
 	}
 
-	value, ok := inf.(map[string]string)
+	value, ok := inf.(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("Labels must be a map[string]string")
 	}
 
-	return value, nil
+	result := make(map[string]string)
+	for k, v := range value {
+		val, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("Labels must be a map[string]string")
+		}
+		result[k] = val
+	}
+
+	return result, nil
 }
 
 func postNetworkCreate(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
@@ -1143,8 +1152,7 @@ func postNetworkCreate(eng *engine.Engine, version version.Version, w http.Respo
 	}
 
 	body := make(map[string]interface{})
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		return err
 	}
 
@@ -1174,8 +1182,18 @@ func postNetworkPlug(eng *engine.Engine, version version.Version, w http.Respons
 		return err
 	}
 
+	body := make(map[string]interface{})
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return err
+	}
+
+	labels, err := getLabels(body)
+	if err != nil {
+		return err
+	}
+
 	d := getDaemon(eng)
-	id, err := d.NetworkPlug(vars["name"], vars["network"])
+	id, err := d.NetworkPlug(vars["name"], vars["network"], labels)
 	if err != nil {
 		return err
 	}
