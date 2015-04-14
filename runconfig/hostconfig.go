@@ -132,6 +132,7 @@ type HostConfig struct {
 	Ulimits         []*ulimit.Ulimit
 	LogConfig       LogConfig
 	CgroupParent    string // Parent cgroup.
+	Plugin          bool
 }
 
 // This is used by the create command when you want to set both the
@@ -184,6 +185,7 @@ func ContainerHostConfigFromJob(job *engine.Job) *HostConfig {
 		PidMode:         PidMode(job.Getenv("PidMode")),
 		ReadonlyRootfs:  job.GetenvBool("ReadonlyRootfs"),
 		CgroupParent:    job.Getenv("CgroupParent"),
+		Plugin:          job.GetenvBool("Plugin"),
 	}
 
 	// FIXME: This is for backward compatibility, if people use `Cpuset`

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -40,6 +41,7 @@ import (
 	"github.com/docker/docker/pkg/stringid"
 	"github.com/docker/docker/pkg/symlink"
 	"github.com/docker/docker/pkg/ulimit"
+	"github.com/docker/docker/plugins"
 	"github.com/docker/docker/runconfig"
 	"github.com/docker/docker/utils"
 )
@@ -1471,7 +1473,57 @@ func (container *Container) waitForStart() error {
 		return err
 	}
 
+	if container.hostConfig.Plugin {
+		if err := container.waitForPluginSock(); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func (container *Container) waitForPluginSock() error {
+	pluginSock, err := container.getPluginSocketPath()
+	if err != nil {
+		return err
+	}
+
+	chConn := make(chan net.Conn)
+	chStop := make(chan struct{})
+	go func() {
+		logrus.Debugf("waiting for plugin socket at: %s", pluginSock)
+		for {
+			addr, err := net.ResolveUnixAddr("unix", pluginSock)
+			if err != nil {
+				logrus.Debugf("bad addr: %s", err)
+			}
+			conn, err := net.DialUnix("unix", nil, addr)
+			// If the file doesn't exist yet, that's ok, maybe plugin hasn't created it yet
+			if err != nil {
+				select {
+				case <-chStop:
+					return
+				default:
+					logrus.Debugf("retrying. got: %s", err)
+					time.Sleep(time.Second)
+					continue
+				}
+			}
+			logrus.Debugf("got plugin socket")
+			chConn <- conn
+			return
+		}
+	}()
+
+	select {
+	case conn := <-chConn:
+		// We can close this net.Conn since the plugin system will establish it's own connection
+		conn.Close()
+		return plugins.Repo.RegisterPlugin(pluginSock)
+	case <-time.After(5 * time.Second):
+		chStop <- struct{}{}
+		return fmt.Errorf("connection to plugin sock timed out")
+	}
 }
 
 func (container *Container) allocatePort(eng *engine.Engine, port nat.Port, bindings nat.PortMap) error {
@@ -1559,4 +1611,8 @@ func (c *Container) GetEndpoint(id string) (int, *Endpoint) {
 		}
 	}
 	return -1, nil
+}
+
+func (container *Container) getPluginSocketPath() (string, error) {
+	return container.getRootResourcePath(filepath.Join("p", "p.s"))
 }

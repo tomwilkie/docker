@@ -319,6 +319,7 @@ func (daemon *Daemon) restore() error {
 		return err
 	}
 
+	// TODO: sort out plugins from normal containers and load plugins first
 	for _, v := range dir {
 		id := v.Name()
 		container, err := daemon.load(id)
