@@ -1,7 +1,9 @@
 package simplebridge
 
 import (
+	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -80,22 +82,26 @@ func (i *ifaces) Get(key string) *networkInterface {
 }
 
 type Network struct {
-	bridgeIface string
+	BridgeIface string `json:"BridgeIface"`
 
-	bridgeIPv4Addr    net.IP     // IP address for bridge
-	bridgeIPv4Network *net.IPNet // Subnet for bridge
-	fixedIPv4Subnet   *net.IPNet // Subnet for allocationl
+	BridgeIPv4Addr    net.IP `json:"bridgeIPv4Addr"`
+	bridgeIPv4Network *net.IPNet
+	fixedIPv4Subnet   *net.IPNet
+	BridgeIPv4Network string `json:"bridgeIPv4Network"`
+	FixedIPv4Subnet   string `json:"fixedIPv4Subnet"`
 
-	enableIPv6        bool
-	bridgeIPv6Addr    net.IP
+	EnableIPv6        bool   `json:"enableIPv6"`
+	BridgeIPv6Addr    net.IP `json:"bridgeIPv6Addr"`
 	bridgeIPv6Network *net.IPNet
 	fixedIPv6Subnet   *net.IPNet
+	BridgeIPv6Network string `json:"bridgeIPv6Network"`
+	FixedIPv6Subnet   string `json:"fixedIPv6Subnet"`
 
-	enableIPTables       bool
-	enableICC            bool
-	enableIPMasq         bool
-	enableIPForward      bool
-	enableDefaultGateway bool
+	EnableIPTables       bool `json:"enableIPTables"`
+	EnableICC            bool `json:"enableICC"`
+	EnableIPMasq         bool `json:"enableIPMasq"`
+	EnableIPForward      bool `json:"enableIPForward"`
+	EnableDefaultGateway bool `json:"enableDefaultGateway"`
 
 	currentInterfaces ifaces
 	ipAllocator       *ipallocator.IPAllocator
@@ -120,43 +126,105 @@ func (c config) getBool(name string, fedault bool) bool {
 	return fedault
 }
 
+func FromJson(state string) (*Network, error) {
+	// The code below picks free names and IP ranges, and therefore
+	// is not idempotent.  So we have the same behvaiour on restarts
+	// (for example, when docker daemon crashes), we first attempt
+	// to restore any previous state.
+	var network Network
+	err := json.Unmarshal([]byte(state), &network)
+	if err != nil {
+		return nil, err
+	}
+
+	network.currentInterfaces = ifaces{c: make(map[string]*networkInterface)}
+	network.ipAllocator = ipallocator.New()
+
+	_, network.bridgeIPv4Network, err = net.ParseCIDR(network.BridgeIPv4Network)
+	if err != nil {
+		return nil, err
+	}
+
+	if network.FixedIPv4Subnet != "" {
+		_, network.fixedIPv4Subnet, err = net.ParseCIDR(network.FixedIPv4Subnet)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if network.BridgeIPv6Network != "" {
+		_, network.bridgeIPv6Network, err = net.ParseCIDR(network.BridgeIPv6Network)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if network.FixedIPv6Subnet != "" {
+		_, network.fixedIPv6Subnet, err = net.ParseCIDR(network.FixedIPv6Subnet)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &network, nil
+}
+
+func (n *Network) ToJson() (string, error) {
+	n.BridgeIPv4Network = n.bridgeIPv4Network.String()
+	if n.fixedIPv4Subnet != nil {
+		n.FixedIPv4Subnet = n.fixedIPv4Subnet.String()
+	}
+	if n.bridgeIPv6Network != nil {
+		n.BridgeIPv6Network = n.bridgeIPv6Network.String()
+	}
+	if n.fixedIPv6Subnet != nil {
+		n.FixedIPv6Subnet = n.fixedIPv6Subnet.String()
+	}
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(n); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
 func NewNetwork(conf config) (*Network, error) {
 	var (
-		bridgeIface = conf.getString("BridgeIface")
+		BridgeIface = conf.getString("BridgeIface")
 
 		bridgeIP  = conf.getString("BridgeIP")
 		fixedCIDR = conf.getString("FixedCIDR")
 
-		enableIPv6  = conf.getBool("EnableIPv6", false)
+		EnableIPv6  = conf.getBool("EnableIPv6", false)
 		bridgeIPv6  = "fe80::1/64"
 		fixedCIDRv6 = conf.getString("FixedCIDRv6")
 
-		enableIPTables       = conf.getBool("EnableIptables", false)
-		enableICC            = conf.getBool("InterContainerCommunication", true)
-		enableIPMasq         = conf.getBool("EnableIpMasq", false)
-		enableIPForward      = conf.getBool("EnableIpForward", false)
-		enableDefaultGateway = conf.getBool("EnableDefaultGateway", false)
+		EnableIPTables       = conf.getBool("EnableIptables", false)
+		EnableICC            = conf.getBool("InterContainerCommunication", true)
+		EnableIPMasq         = conf.getBool("EnableIpMasq", false)
+		EnableIPForward      = conf.getBool("EnableIpForward", false)
+		EnableDefaultGateway = conf.getBool("EnableDefaultGateway", false)
 	)
 
 	network := &Network{
-		enableIPTables:       enableIPTables,
-		enableICC:            enableICC,
-		enableIPMasq:         enableIPMasq,
-		enableIPForward:      enableIPForward,
-		enableDefaultGateway: enableDefaultGateway,
+		EnableIPTables:       EnableIPTables,
+		EnableICC:            EnableICC,
+		EnableIPMasq:         EnableIPMasq,
+		EnableIPForward:      EnableIPForward,
+		EnableDefaultGateway: EnableDefaultGateway,
 
 		currentInterfaces: ifaces{c: make(map[string]*networkInterface)},
 		ipAllocator:       ipallocator.New(),
 	}
 
-	if bridgeIface == "" {
-		bridgeIface, err := findFreeBridgeName()
+	if BridgeIface == "" {
+		BridgeIface, err := findFreeBridgeName()
 		if err != nil {
 			return nil, err
 		}
-		network.bridgeIface = bridgeIface
+		network.BridgeIface = BridgeIface
 	} else {
-		network.bridgeIface = bridgeIface
+		network.BridgeIface = BridgeIface
 	}
 
 	if bridgeIP != "" {
@@ -164,14 +232,14 @@ func NewNetwork(conf config) (*Network, error) {
 		if err != nil {
 			return nil, err
 		}
-		network.bridgeIPv4Addr = ipv4Addr
+		network.BridgeIPv4Addr = ipv4Addr
 		network.bridgeIPv4Network = ipv4Net
 	} else {
 		ipv4Addr, ipv4Net, err := findFreeIp()
 		if err != nil {
 			return nil, err
 		}
-		network.bridgeIPv4Addr = ipv4Addr
+		network.BridgeIPv4Addr = ipv4Addr
 		network.bridgeIPv4Network = ipv4Net
 	}
 
@@ -184,13 +252,13 @@ func NewNetwork(conf config) (*Network, error) {
 		network.fixedIPv4Subnet = subnet
 	}
 
-	if enableIPv6 {
+	if EnableIPv6 {
 		ipv6Addr, ipv6Net, err := net.ParseCIDR(bridgeIPv6)
 		if err != nil {
 			return nil, err
 		}
-		network.enableIPv6 = true
-		network.bridgeIPv6Addr = ipv6Addr
+		network.EnableIPv6 = true
+		network.BridgeIPv6Addr = ipv6Addr
 		network.bridgeIPv6Network = ipv6Net
 
 		if fixedCIDRv6 != "" {
@@ -251,37 +319,37 @@ func (n Network) Setup() error {
 	// if thats not possible.
 
 	// Create the bridge is it doesn't exist
-	_, _, err := networkdriver.GetIfaceAddr(n.bridgeIface)
+	_, _, err := networkdriver.GetIfaceAddr(n.BridgeIface)
 	if err != nil {
 		if err := n.configureBridge(); err != nil {
 			return err
 		}
 
-		_, _, err := networkdriver.GetIfaceAddr(n.bridgeIface)
+		_, _, err := networkdriver.GetIfaceAddr(n.BridgeIface)
 		if err != nil {
 			return err
 		}
 
 		if n.fixedIPv6Subnet != nil {
 			// Setting route to global IPv6 subnet
-			logrus.Infof("Adding route to IPv6 network %q via device %q", n.fixedIPv6Subnet, n.bridgeIface)
-			if err := netlink.AddRoute(n.fixedIPv6Subnet.String(), "", "", n.bridgeIface); err != nil {
+			logrus.Infof("Adding route to IPv6 network %q via device %q", n.fixedIPv6Subnet, n.BridgeIface)
+			if err := netlink.AddRoute(n.fixedIPv6Subnet.String(), "", "", n.BridgeIface); err != nil {
 				logrus.Fatalf("Could not add route to IPv6 network %q via device %q",
-					n.fixedIPv6Subnet, n.bridgeIface)
+					n.fixedIPv6Subnet, n.BridgeIface)
 			}
 		}
 	}
 
 	// Validate that the bridge ipv4 address matches that specified
 	{
-		addrv4, _, err := networkdriver.GetIfaceAddr(n.bridgeIface)
+		addrv4, _, err := networkdriver.GetIfaceAddr(n.BridgeIface)
 		if err != nil {
 			return err
 		}
 		netv4 := addrv4.(*net.IPNet)
-		if !netv4.IP.Equal(n.bridgeIPv4Addr) {
+		if !netv4.IP.Equal(n.BridgeIPv4Addr) {
 			return fmt.Errorf("Bridge ip (%s) does not match existing bridge configuration %s",
-				addrv4, n.bridgeIPv4Addr)
+				addrv4, n.BridgeIPv4Addr)
 		}
 	}
 
@@ -289,8 +357,8 @@ func (n Network) Setup() error {
 	// (for example, an existing Docker installation that has only been used
 	// with IPv4 and docker0 already is set up) In that case, we can perform
 	// the bridge init for IPv6 here, else we will error out below if --ipv6=true
-	if n.enableIPv6 {
-		_, addrsv6, err := networkdriver.GetIfaceAddr(n.bridgeIface)
+	if n.EnableIPv6 {
+		_, addrsv6, err := networkdriver.GetIfaceAddr(n.BridgeIface)
 		if err != nil {
 			return err
 		}
@@ -301,7 +369,7 @@ func (n Network) Setup() error {
 		}
 
 		// Recheck addresses now that IPv6 is setup on the bridge
-		_, addrsv6, err = networkdriver.GetIfaceAddr(n.bridgeIface)
+		_, addrsv6, err = networkdriver.GetIfaceAddr(n.BridgeIface)
 		if err != nil {
 			return err
 		}
@@ -310,13 +378,13 @@ func (n Network) Setup() error {
 		found := false
 		for _, addrv6 := range addrsv6 {
 			addrv6 := addrv6.(*net.IPNet)
-			if addrv6.IP.Equal(n.bridgeIPv6Addr) {
+			if addrv6.IP.Equal(n.BridgeIPv6Addr) {
 				found = true
 				break
 			}
 		}
 		if !found {
-			return fmt.Errorf("Bridge IPv6 does not match existing bridge configuration %s", n.bridgeIPv6Addr)
+			return fmt.Errorf("Bridge IPv6 does not match existing bridge configuration %s", n.BridgeIPv6Addr)
 		}
 		if len(addrsv6) == 0 {
 			return errors.New("IPv6 enabled but no IPv6 detected")
@@ -324,14 +392,14 @@ func (n Network) Setup() error {
 	}
 
 	// Configure iptables for link support
-	if n.enableIPTables {
+	if n.EnableIPTables {
 		if err := n.setupIPTables(); err != nil {
 			return err
 		}
 	}
 
 	// Enable IPv4 forwarding
-	if n.enableIPForward {
+	if n.EnableIPForward {
 		if err := ioutil.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte{'1', '\n'}, 0644); err != nil {
 			logrus.Warnf("WARNING: unable to enable IPv4 forwarding: %s\n", err)
 		}
@@ -352,12 +420,12 @@ func (n Network) Setup() error {
 		return err
 	}
 
-	if n.enableIPTables {
-		_, err := iptables.NewChain("DOCKER", n.bridgeIface, iptables.Nat)
+	if n.EnableIPTables {
+		_, err := iptables.NewChain("DOCKER", n.BridgeIface, iptables.Nat)
 		if err != nil {
 			return err
 		}
-		_, err = iptables.NewChain("DOCKER", n.bridgeIface, iptables.Filter)
+		_, err = iptables.NewChain("DOCKER", n.BridgeIface, iptables.Filter)
 		if err != nil {
 			return err
 		}
@@ -388,14 +456,14 @@ func (n Network) Setup() error {
 }
 
 func (n Network) Destroy() error {
-	return netlink.NetworkLinkDel(n.bridgeIface)
+	return netlink.NetworkLinkDel(n.BridgeIface)
 }
 
 func (n Network) setupIPTables() error {
 	// Enable NAT
 
-	if n.enableIPMasq {
-		natArgs := []string{"-s", n.bridgeIPv4Addr.String(), "!", "-o", n.bridgeIface, "-j", "MASQUERADE"}
+	if n.EnableIPMasq {
+		natArgs := []string{"-s", n.BridgeIPv4Addr.String(), "!", "-o", n.BridgeIface, "-j", "MASQUERADE"}
 
 		if !iptables.Exists(iptables.Nat, "POSTROUTING", natArgs...) {
 			if output, err := iptables.Raw(append([]string{
@@ -408,12 +476,12 @@ func (n Network) setupIPTables() error {
 	}
 
 	var (
-		args       = []string{"-i", n.bridgeIface, "-o", n.bridgeIface, "-j"}
+		args       = []string{"-i", n.BridgeIface, "-o", n.BridgeIface, "-j"}
 		acceptArgs = append(args, "ACCEPT")
 		dropArgs   = append(args, "DROP")
 	)
 
-	if !n.enableICC {
+	if !n.EnableICC {
 		iptables.Raw(append([]string{"-D", "FORWARD"}, acceptArgs...)...)
 
 		if !iptables.Exists(iptables.Filter, "FORWARD", dropArgs...) {
@@ -438,7 +506,7 @@ func (n Network) setupIPTables() error {
 	}
 
 	// Accept all non-intercontainer outgoing packets
-	outgoingArgs := []string{"-i", n.bridgeIface, "!", "-o", n.bridgeIface, "-j", "ACCEPT"}
+	outgoingArgs := []string{"-i", n.BridgeIface, "!", "-o", n.BridgeIface, "-j", "ACCEPT"}
 	if !iptables.Exists(iptables.Filter, "FORWARD", outgoingArgs...) {
 		if output, err := iptables.Raw(append([]string{"-I", "FORWARD"}, outgoingArgs...)...); err != nil {
 			return fmt.Errorf("Unable to allow outgoing packets: %s", err)
@@ -448,7 +516,7 @@ func (n Network) setupIPTables() error {
 	}
 
 	// Accept incoming packets for existing connections
-	existingArgs := []string{"-o", n.bridgeIface, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"}
+	existingArgs := []string{"-o", n.BridgeIface, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"}
 
 	if !iptables.Exists(iptables.Filter, "FORWARD", existingArgs...) {
 		if output, err := iptables.Raw(append([]string{"-I", "FORWARD"}, existingArgs...)...); err != nil {
@@ -460,31 +528,31 @@ func (n Network) setupIPTables() error {
 	return nil
 }
 
-// configureBridge attempts to create and configure a network bridge interface named `bridgeIface` on the host
+// configureBridge attempts to create and configure a network bridge interface named `BridgeIface` on the host
 // If bridgeIP is empty, it will try to find a non-conflicting IP from the Docker-specified private ranges
-// If the bridge `bridgeIface` already exists, it will only perform the IP address association with the existing
+// If the bridge `BridgeIface` already exists, it will only perform the IP address association with the existing
 // bridge (fixes issue #8444)
 // If an address which doesn't conflict with existing interfaces can't be found, an error is returned.
 func (n Network) configureBridge() error {
-	logrus.Debugf("Creating bridge %s with network %s", n.bridgeIface, n.bridgeIPv4Addr)
+	logrus.Debugf("Creating bridge %s with network %s", n.BridgeIface, n.BridgeIPv4Addr)
 
-	if err := createBridgeIface(n.bridgeIface); err != nil {
+	if err := createBridgeIface(n.BridgeIface); err != nil {
 		// The bridge may already exist, therefore we can ignore an "exists" error
 		if !os.IsExist(err) {
 			return err
 		}
 	}
 
-	iface, err := net.InterfaceByName(n.bridgeIface)
+	iface, err := net.InterfaceByName(n.BridgeIface)
 	if err != nil {
 		return err
 	}
 
-	if err := netlink.NetworkLinkAddIp(iface, n.bridgeIPv4Addr, n.bridgeIPv4Network); err != nil {
+	if err := netlink.NetworkLinkAddIp(iface, n.BridgeIPv4Addr, n.bridgeIPv4Network); err != nil {
 		return fmt.Errorf("Unable to add private network: %s", err)
 	}
 
-	if n.enableIPv6 {
+	if n.EnableIPv6 {
 		if err := n.setupIPv6Bridge(); err != nil {
 			return err
 		}
@@ -497,7 +565,7 @@ func (n Network) configureBridge() error {
 }
 
 func (n Network) setupIPv6Bridge() error {
-	iface, err := net.InterfaceByName(n.bridgeIface)
+	iface, err := net.InterfaceByName(n.BridgeIface)
 	if err != nil {
 		return err
 	}
@@ -508,7 +576,7 @@ func (n Network) setupIPv6Bridge() error {
 		return fmt.Errorf("Unable to enable IPv6 addresses on bridge: %v", err)
 	}
 
-	if err := netlink.NetworkLinkAddIp(iface, n.bridgeIPv6Addr, n.bridgeIPv6Network); err != nil {
+	if err := netlink.NetworkLinkAddIp(iface, n.BridgeIPv6Addr, n.bridgeIPv6Network); err != nil {
 		return fmt.Errorf("Unable to add private IPv6 network: %v", err)
 	}
 
@@ -596,8 +664,8 @@ func (n *Network) Allocate(id string, conf config) (*execdriver.NetworkInterface
 	// NB you can only have one default gateway in a container; you
 	// won't be able to start a container if this is specified on two networks!
 	var gateway string
-	if n.enableDefaultGateway {
-		gateway = n.bridgeIPv4Addr.String()
+	if n.EnableDefaultGateway {
+		gateway = n.BridgeIPv4Addr.String()
 	}
 
 	//if globalIPv6Network != nil {
@@ -630,7 +698,7 @@ func (n *Network) Allocate(id string, conf config) (*execdriver.NetworkInterface
 		IPAddress:   ip.String(),
 		IPPrefixLen: size,
 		MacAddress:  mac.String(),
-		Bridge:      n.bridgeIface,
+		Bridge:      n.BridgeIface,
 	}, nil
 
 	// If linklocal IPv6
@@ -646,7 +714,7 @@ func (n *Network) Allocate(id string, conf config) (*execdriver.NetworkInterface
 	//	out.Set("GlobalIPv6", globalIPv6.String())
 	//	sizev6, _ := globalIPv6Network.Mask.Size()
 	//	out.SetInt("GlobalIPv6PrefixLen", sizev6)
-	//	out.Set("IPv6Gateway", bridgeIPv6Addr.String())
+	//	out.Set("IPv6Gateway", BridgeIPv6Addr.String())
 	//}
 }
 
@@ -779,7 +847,7 @@ func (n *Network) Release(id string) error {
 //		return fmt.Errorf("Child IP '%s' is invalid", childIP)
 //	}
 //
-//	chain := iptables.Chain{Name: "DOCKER", Bridge: bridgeIface}
+//	chain := iptables.Chain{Name: "DOCKER", Bridge: BridgeIface}
 //	for _, p := range ports {
 //		port := nat.Port(p)
 //		if err := chain.Link(nfAction, ip1, ip2, port.Int(), port.Proto()); !ignoreErrors && err != nil {

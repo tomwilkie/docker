@@ -403,6 +403,9 @@ func (daemon *Daemon) restore() error {
 		logrus.Info("Loading containers: done.")
 	}
 
+	// Networks must be loaded after containers, as some of the drivers might be containers
+	daemon.networks.Restore()
+
 	return nil
 }
 
@@ -896,6 +899,11 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine, registryService 
 		return nil, err
 	}
 
+	networkRepoPath := path.Join(config.Root, "network")
+	if err := os.MkdirAll(networkRepoPath, 0700); err != nil && !os.IsExist(err) {
+		return nil, err
+	}
+
 	// Migrate the container if it is aufs and aufs is enabled
 	if err = migrateIfAufs(driver, config.Root); err != nil {
 		return nil, err
@@ -1004,7 +1012,7 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine, registryService 
 		defaultLogConfig: config.LogConfig,
 		RegistryService:  registryService,
 		EventsService:    eventsService,
-		networks:         NewNetworkRegistry(),
+		networks:         NewNetworkRegistry(networkRepoPath),
 	}
 
 	eng.OnShutdown(func() {

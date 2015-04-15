@@ -8,9 +8,9 @@ Next steps are:
 - <s>docker run support</s>
 - <s>find appropriate hook for unplug</s>
 - <s>move code out of subdir to avoid circular imports</s>
-- make a plausible default/simple bridge driver
-- persistence and tear down / setup (in network/collection.go)
-- transport to external plugins (lukestensions?)
+- <s>make a plausible default/simple bridge driver</s>
+- <s>persistence and tear down / setup</s>
+- <s>transport to external plugins (lukestensions?)</s>
 - implement weave plugin.
 - make plug work for running containers
 
