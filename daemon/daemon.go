@@ -1046,6 +1046,8 @@ func (daemon *Daemon) shutdown() error {
 	}
 	group.Wait()
 
+	daemon.networks.Shutdown()
+
 	return nil
 }
 

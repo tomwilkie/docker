@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/execdriver"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/daemon/networkdriver/simplebridge"
 	"github.com/docker/docker/pkg/namesgenerator"
 	"github.com/docker/docker/pkg/stringid"
 )
@@ -87,7 +89,7 @@ func (daemon *Daemon) NetworkDestroy(id string) error {
 		return fmt.Errorf("Network '%s' not found", id)
 	}
 
-	if err := net.DestroyNetwork(); err != nil {
+	if err := net.Destroy(); err != nil {
 		return err
 	}
 
@@ -207,6 +209,15 @@ func (reg *NetworkRegistry) Walk(f func(network *Network)) {
 	}
 }
 
+func (reg *NetworkRegistry) Shutdown() {
+	reg.Lock()
+	defer reg.Unlock()
+
+	for _, network := range reg.networks {
+		network.Destroy()
+	}
+}
+
 func NewNetwork(networkName, driverName string, labels map[string]string) (*Network, error) {
 	driver, okay := GetNetworkDriver(driverName)
 	if !okay {
@@ -226,7 +237,7 @@ func NewNetwork(networkName, driverName string, labels map[string]string) (*Netw
 	return network, nil
 }
 
-func (net *Network) DestroyNetwork() error {
+func (net *Network) Destroy() error {
 	driver, okay := GetNetworkDriver(net.Driver)
 	if !okay {
 		return fmt.Errorf("Driver '%s' not found", net.Driver)
@@ -255,6 +266,8 @@ func (e *Endpoint) Plug(daemon *Daemon) (*execdriver.NetworkInterface, error) {
 		return nil, err
 	}
 
+	logrus.Infof("Plug %+v", inf)
+
 	return inf, nil
 }
 
@@ -280,7 +293,7 @@ var drivers map[string]Driver
 
 func init() {
 	drivers = make(map[string]Driver)
-	RegisterNetworkDriver("noop", noopDriver{})
+	RegisterNetworkDriver("simplebridge", simpleBridgeDriver{make(map[string]*simplebridge.Network)})
 }
 
 func GetNetworkDriver(name string) (Driver, bool) {
@@ -292,17 +305,56 @@ func RegisterNetworkDriver(name string, driver Driver) {
 	drivers[name] = driver
 }
 
-type noopDriver struct{}
-
-func (n noopDriver) Create(network *Network) error  { return nil }
-func (n noopDriver) Destroy(network *Network) error { return nil }
-func (n noopDriver) Plug(network *Network, endpoint *Endpoint) (*execdriver.NetworkInterface, error) {
-	return &execdriver.NetworkInterface{
-		Gateway:     "",
-		IPAddress:   "10.0.0.6",
-		IPPrefixLen: 16,
-		MacAddress:  "02:42:0a:03:00:01",
-		Bridge:      "docker0",
-	}, nil
+// SimpleBridge drivers
+type simpleBridgeDriver struct {
+	networks map[string]*simplebridge.Network
 }
-func (n noopDriver) Unplug(network *Network, endpoint *Endpoint) error { return nil }
+
+func (s simpleBridgeDriver) Create(network *Network) error {
+	net, err := simplebridge.NewNetwork(network.Labels)
+	if err != nil {
+		return err
+	}
+
+	err = net.Setup()
+	if err != nil {
+		return err
+	}
+
+	s.networks[network.ID] = net
+	return nil
+}
+
+func (s simpleBridgeDriver) Destroy(network *Network) error {
+	net, found := s.networks[network.ID]
+	if !found {
+		return fmt.Errorf("Network '%s' not found", network.ID)
+	}
+
+	delete(s.networks, network.ID)
+	return net.Destroy()
+}
+
+func (s simpleBridgeDriver) Plug(network *Network, endpoint *Endpoint) (*execdriver.NetworkInterface, error) {
+	net, found := s.networks[network.ID]
+	if !found {
+		return nil, fmt.Errorf("Network '%s' not found", network.ID)
+	}
+
+	inf, err := net.Allocate(endpoint.ID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return inf, nil
+}
+
+func (s simpleBridgeDriver) Unplug(network *Network, endpoint *Endpoint) error {
+	net, found := s.networks[network.ID]
+	if !found {
+		return fmt.Errorf("Network '%s' not found", network.ID)
+	}
+
+	err := net.Release(endpoint.ID)
+	return err
+}
