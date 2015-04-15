@@ -1,12 +1,17 @@
 package daemon
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path"
 	"sync"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/docker/docker/daemon/execdriver"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/daemon/execdriver"
 	"github.com/docker/docker/daemon/networkdriver/simplebridge"
 	"github.com/docker/docker/pkg/namesgenerator"
 	"github.com/docker/docker/pkg/stringid"
@@ -14,6 +19,7 @@ import (
 
 type NetworkRegistry struct {
 	sync.Mutex
+	path     string
 	networks map[string]*Network
 }
 
@@ -21,7 +27,8 @@ type Network struct {
 	ID     string
 	Name   string
 	Driver string
-	Labels map[string]string
+	Labels map[string]string // Labels are treated as user-defined input
+	State  map[string]string // State is owned by the driver, for its use
 }
 
 type Endpoint struct {
@@ -31,7 +38,7 @@ type Endpoint struct {
 }
 
 type Driver interface {
-	Create(network *Network) error
+	Setup(network *Network) error
 	Destroy(network *Network) error
 
 	Plug(network *Network, endpoint *Endpoint) (*execdriver.NetworkInterface, error)
@@ -55,12 +62,21 @@ func (daemon *Daemon) NetworkCreate(name string, driver string, labels map[strin
 		return "", fmt.Errorf("Network '%s' already exists", name)
 	}
 
-	net, err := NewNetwork(name, driver, labels)
-	if err != nil {
+	net := &Network{
+		Driver: driver,
+		ID:     stringid.GenerateRandomID(),
+		Name:   name,
+		Labels: labels,
+		State:  make(map[string]string),
+	}
+
+	if err := net.Setup(); err != nil {
 		return "", err
 	}
 
-	daemon.networks.Add(net)
+	if err := daemon.networks.Add(net); err != nil {
+		return "", err
+	}
 	return net.ID, nil
 }
 
@@ -93,8 +109,7 @@ func (daemon *Daemon) NetworkDestroy(id string) error {
 		return err
 	}
 
-	daemon.networks.Remove(id)
-	return nil
+	return daemon.networks.Remove(net.ID)
 }
 
 func (daemon *Daemon) endpointOnNetwork(namesOrId string, labels map[string]string) (*Endpoint, error) {
@@ -167,8 +182,46 @@ func (daemon *Daemon) NetworkUnplug(containedID, endpointID string) error {
 	return nil
 }
 
-func NewNetworkRegistry() NetworkRegistry {
-	return NetworkRegistry{networks: make(map[string]*Network)}
+func NewNetworkRegistry(path string) NetworkRegistry {
+	return NetworkRegistry{
+		path:     path,
+		networks: make(map[string]*Network),
+	}
+}
+
+func (reg *NetworkRegistry) Restore() error {
+	logrus.Infof("Loading networks from '%s'", reg.path)
+	dir, err := ioutil.ReadDir(reg.path)
+	if err != nil {
+		return err
+	}
+
+	for _, v := range dir {
+		id := v.Name()
+		file, err := os.Open(path.Join(reg.path, id))
+		if err != nil {
+			return err
+		}
+
+		network := &Network{}
+		if err := json.NewDecoder(file).Decode(network); err != nil {
+			logrus.Errorf("Failed to load network %v: %v", id, err)
+			return err
+		}
+		if network.State == nil {
+			network.State = make(map[string]string)
+		}
+
+		if err := network.Setup(); err != nil {
+			logrus.Errorf("Failed to setup network %v: %v", id, err)
+			return err
+		}
+
+		logrus.Infof("Loaded network %s", network.ID)
+		reg.Add(network)
+	}
+
+	return nil
 }
 
 func (reg *NetworkRegistry) ExistsWithName(name string) bool {
@@ -180,8 +233,22 @@ func (reg *NetworkRegistry) ExistsWithName(name string) bool {
 	return false
 }
 
-func (reg *NetworkRegistry) Add(network *Network) {
+func (reg *NetworkRegistry) Add(network *Network) error {
+	if err := reg.save(network); err != nil {
+		return err
+	}
 	reg.networks[network.ID] = network
+	return nil
+}
+
+func (reg *NetworkRegistry) save(network *Network) error {
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(network)
+	if err != nil {
+		return err
+	}
+
+	return ioutil.WriteFile(path.Join(reg.path, network.ID), buf.Bytes(), 0666)
 }
 
 func (reg *NetworkRegistry) Get(nameOrId string) *Network {
@@ -199,8 +266,12 @@ func (reg *NetworkRegistry) Get(nameOrId string) *Network {
 	return nil
 }
 
-func (reg *NetworkRegistry) Remove(id string) {
+func (reg *NetworkRegistry) Remove(id string) error {
+	if err := os.Remove(path.Join(reg.path, id)); err != nil {
+		return err
+	}
 	delete(reg.networks, id)
+	return nil
 }
 
 func (reg *NetworkRegistry) Walk(f func(network *Network)) {
@@ -218,23 +289,13 @@ func (reg *NetworkRegistry) Shutdown() {
 	}
 }
 
-func NewNetwork(networkName, driverName string, labels map[string]string) (*Network, error) {
-	driver, okay := GetNetworkDriver(driverName)
+func (net *Network) Setup() error {
+	driver, okay := GetNetworkDriver(net.Driver)
 	if !okay {
-		return nil, fmt.Errorf("Driver '%s' not found", driverName)
+		return fmt.Errorf("Driver '%s' not found", net.Driver)
 	}
 
-	network := &Network{
-		Driver: driverName,
-		ID:     stringid.GenerateRandomID(),
-		Name:   networkName,
-		Labels: labels,
-	}
-	if err := driver.Create(network); err != nil {
-		return nil, err
-	}
-
-	return network, nil
+	return driver.Setup(net)
 }
 
 func (net *Network) Destroy() error {
@@ -243,11 +304,7 @@ func (net *Network) Destroy() error {
 		return fmt.Errorf("Driver '%s' not found", net.Driver)
 	}
 
-	if err := driver.Destroy(net); err != nil {
-		return err
-	}
-
-	return nil
+	return driver.Destroy(net)
 }
 
 func (e *Endpoint) Plug(daemon *Daemon) (*execdriver.NetworkInterface, error) {
@@ -293,7 +350,7 @@ var drivers map[string]Driver
 
 func init() {
 	drivers = make(map[string]Driver)
-	RegisterNetworkDriver("simplebridge", simpleBridgeDriver{make(map[string]*simplebridge.Network)})
+	RegisterNetworkDriver("simplebridge", &simpleBridgeDriver{make(map[string]*simplebridge.Network)})
 }
 
 func GetNetworkDriver(name string) (Driver, bool) {
@@ -310,22 +367,36 @@ type simpleBridgeDriver struct {
 	networks map[string]*simplebridge.Network
 }
 
-func (s simpleBridgeDriver) Create(network *Network) error {
-	net, err := simplebridge.NewNetwork(network.Labels)
-	if err != nil {
+func (s *simpleBridgeDriver) Setup(network *Network) error {
+	state, found := network.State["simplebridge"]
+	var net *simplebridge.Network
+	var err error
+	if found {
+		net, err = simplebridge.FromJson(state)
+		if err != nil {
+			return err
+		}
+	} else {
+		net, err = simplebridge.NewNetwork(network.Labels)
+		if err != nil {
+			return err
+		}
+	}
+
+	if err = net.Setup(); err != nil {
 		return err
 	}
 
-	err = net.Setup()
+	state, err = net.ToJson()
 	if err != nil {
 		return err
 	}
-
+	network.State["simplebridge"] = state
 	s.networks[network.ID] = net
 	return nil
 }
 
-func (s simpleBridgeDriver) Destroy(network *Network) error {
+func (s *simpleBridgeDriver) Destroy(network *Network) error {
 	net, found := s.networks[network.ID]
 	if !found {
 		return fmt.Errorf("Network '%s' not found", network.ID)
@@ -335,7 +406,7 @@ func (s simpleBridgeDriver) Destroy(network *Network) error {
 	return net.Destroy()
 }
 
-func (s simpleBridgeDriver) Plug(network *Network, endpoint *Endpoint) (*execdriver.NetworkInterface, error) {
+func (s *simpleBridgeDriver) Plug(network *Network, endpoint *Endpoint) (*execdriver.NetworkInterface, error) {
 	net, found := s.networks[network.ID]
 	if !found {
 		return nil, fmt.Errorf("Network '%s' not found", network.ID)
@@ -349,7 +420,7 @@ func (s simpleBridgeDriver) Plug(network *Network, endpoint *Endpoint) (*execdri
 	return inf, nil
 }
 
-func (s simpleBridgeDriver) Unplug(network *Network, endpoint *Endpoint) error {
+func (s *simpleBridgeDriver) Unplug(network *Network, endpoint *Endpoint) error {
 	net, found := s.networks[network.ID]
 	if !found {
 		return fmt.Errorf("Network '%s' not found", network.ID)

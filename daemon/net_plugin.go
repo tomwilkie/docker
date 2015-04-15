@@ -12,7 +12,7 @@ type netDriver struct {
 	plugin *plugins.Plugin
 }
 
-func (driver *netDriver) Create(network *Network) error {
+func (driver *netDriver) Setup(network *Network) error {
 	reader, err := driver.plugin.Call("POST", "", network)
 	if err != nil {
 		logrus.Warningf("Driver returned err:", err)
