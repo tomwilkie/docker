@@ -13,6 +13,7 @@ Next steps are:
 - <s>transport to external plugins (lukestensions?)</s>
 - implement weave plugin.
 - make plug work for running containers
+- drivers will want to specify a resolver, probably
 
 Little things
 - <s>Make net create cli print id of network</s>
