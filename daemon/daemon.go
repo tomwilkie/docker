@@ -32,6 +32,7 @@ import (
 	"github.com/docker/docker/image"
 	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/broadcastwriter"
+	"github.com/docker/docker/pkg/fileutils"
 	"github.com/docker/docker/pkg/graphdb"
 	"github.com/docker/docker/pkg/ioutils"
 	"github.com/docker/docker/pkg/namesgenerator"
@@ -119,10 +120,7 @@ type Daemon struct {
 func (daemon *Daemon) Install(eng *engine.Engine) error {
 	for name, method := range map[string]engine.Handler{
 		"container_inspect": daemon.ContainerInspect,
-		"create":            daemon.ContainerCreate,
 		"info":              daemon.CmdInfo,
-		"restart":           daemon.ContainerRestart,
-		"start":             daemon.ContainerStart,
 		"execCreate":        daemon.ContainerExecCreate,
 		"execStart":         daemon.ContainerExecStart,
 	} {
@@ -273,19 +271,8 @@ func (daemon *Daemon) register(container *Container, updateSuffixarray bool) err
 		if err := container.ToDisk(); err != nil {
 			logrus.Debugf("saving stopped state to disk %s", err)
 		}
-
-		info := daemon.execDriver.Info(container.ID)
-		if !info.IsRunning() {
-			logrus.Debugf("Container %s was supposed to be running but is not.", container.ID)
-
-			logrus.Debug("Marking as stopped")
-
-			container.SetStopped(&execdriver.ExitStatus{ExitCode: -127})
-			if err := container.ToDisk(); err != nil {
-				return err
-			}
-		}
 	}
+
 	return nil
 }
 
@@ -436,7 +423,7 @@ func (daemon *Daemon) setupResolvconfWatcher() error {
 						updatedResolvConf, modified := resolvconf.FilterResolvDns(updatedResolvConf, daemon.config.Bridge.EnableIPv6)
 						if modified {
 							// changes have occurred during localhost cleanup: generate an updated hash
-							newHash, err := utils.HashData(bytes.NewReader(updatedResolvConf))
+							newHash, err := ioutils.HashData(bytes.NewReader(updatedResolvConf))
 							if err != nil {
 								logrus.Debugf("Error generating hash of new resolv.conf: %v", err)
 							} else {
@@ -487,7 +474,7 @@ func (daemon *Daemon) mergeAndVerifyConfig(config *runconfig.Config, img *image.
 			return nil, err
 		}
 	}
-	if len(config.Entrypoint) == 0 && len(config.Cmd) == 0 {
+	if config.Entrypoint.Len() == 0 && config.Cmd.Len() == 0 {
 		return nil, fmt.Errorf("No command specified")
 	}
 	return warnings, nil
@@ -579,17 +566,20 @@ func (daemon *Daemon) generateHostname(id string, config *runconfig.Config) {
 	}
 }
 
-func (daemon *Daemon) getEntrypointAndArgs(configEntrypoint, configCmd []string) (string, []string) {
+func (daemon *Daemon) getEntrypointAndArgs(configEntrypoint *runconfig.Entrypoint, configCmd *runconfig.Command) (string, []string) {
 	var (
 		entrypoint string
 		args       []string
 	)
-	if len(configEntrypoint) != 0 {
-		entrypoint = configEntrypoint[0]
-		args = append(configEntrypoint[1:], configCmd...)
+
+	cmdSlice := configCmd.Slice()
+	if configEntrypoint.Len() != 0 {
+		eSlice := configEntrypoint.Slice()
+		entrypoint = eSlice[0]
+		args = append(eSlice[1:], cmdSlice...)
 	} else {
-		entrypoint = configCmd[0]
-		args = configCmd[1:]
+		entrypoint = cmdSlice[0]
+		args = cmdSlice[1:]
 	}
 	return entrypoint, args
 }
@@ -841,7 +831,7 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine, registryService 
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get the TempDir under %s: %s", config.Root, err)
 	}
-	realTmp, err := utils.ReadSymlinkedDirectory(tmp)
+	realTmp, err := fileutils.ReadSymlinkedDirectory(tmp)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get the full path to the TempDir (%s): %s", tmp, err)
 	}
@@ -852,7 +842,7 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine, registryService 
 	if _, err := os.Stat(config.Root); err != nil && os.IsNotExist(err) {
 		realRoot = config.Root
 	} else {
-		realRoot, err = utils.ReadSymlinkedDirectory(config.Root)
+		realRoot, err = fileutils.ReadSymlinkedDirectory(config.Root)
 		if err != nil {
 			return nil, fmt.Errorf("Unable to get the full path to root (%s): %s", config.Root, err)
 		}
@@ -975,7 +965,7 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine, registryService 
 		if err := os.Mkdir(path.Dir(localCopy), 0700); err != nil && !os.IsExist(err) {
 			return nil, err
 		}
-		if _, err := utils.CopyFile(sysInitPath, localCopy); err != nil {
+		if _, err := fileutils.CopyFile(sysInitPath, localCopy); err != nil {
 			return nil, err
 		}
 		if err := os.Chmod(localCopy, 0700); err != nil {

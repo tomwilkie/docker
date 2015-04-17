@@ -6,10 +6,10 @@ MAINTAINER Sven Dowideit <SvenDowideit@docker.com> (@SvenDowideit)
 
 # This section ensures we pull the correct version of each
 # sub project
-ENV COMPOSE_BRANCH release
-ENV SWARM_BRANCH v0.1.0
-ENV MACHINE_BRANCH v0.1.0
-ENV DISTRIB_BRANCH master
+ENV COMPOSE_BRANCH 1.2.0
+ENV SWARM_BRANCH v0.2.0
+ENV MACHINE_BRANCH master
+ENV DISTRIB_BRANCH v2.0.0
 
 
 
@@ -37,15 +37,32 @@ COPY ./release.sh release.sh
 # 
 #ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/mkdocs.yml /docs/mkdocs-distribution.yml
 
-#ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/overview.md /docs/sources/distribution/overview.md
-#RUN sed -i.old '1s;^;no_version_dropdown: true;' /docs/sources/distribution/overview.md
+ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/images/notifications.png /docs/sources/registry/images/notifications.png
+ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/images/registry.png /docs/sources/registry/images/registry.png
 
-#ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/install.md /docs/sources/distribution/install.md
-#RUN sed -i.old '1s;^;no_version_dropdown: true;' /docs/sources/distribution/install.md
+ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/overview.md /docs/sources/registry/overview.md
+RUN sed -i.old '1s;^;no_version_dropdown: true;' /docs/sources/registry/overview.md
 
-#ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/architecture.md /docs/sources/distribution/architecture.md
-#RUN sed -i.old '1s;^;no_version_dropdown: true;' /docs/sources/distribution/architecture.md
+ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/deploying.md /docs/sources/registry/deploying.md
+RUN sed -i.old '1s;^;no_version_dropdown: true;' /docs/sources/registry/deploying.md
 
+ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/configuration.md /docs/sources/registry/configuration.md
+RUN sed -i.old '1s;^;no_version_dropdown: true;' /docs/sources/registry/configuration.md
+
+ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/storagedrivers.md /docs/sources/registry/storagedrivers.md
+RUN sed -i.old '1s;^;no_version_dropdown: true;' /docs/sources/registry/storagedrivers.md
+
+ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/notifications.md /docs/sources/registry/notifications.md
+RUN sed -i.old '1s;^;no_version_dropdown: true;' /docs/sources/registry/notifications.md
+
+ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/spec/api.md /docs/sources/registry/spec/api.md
+RUN sed -i.old '1s;^;no_version_dropdown: true;' /docs/sources/registry/spec/api.md
+
+ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/spec/json.md /docs/sources/registry/spec/json.md
+RUN sed -i.old '1s;^;no_version_dropdown: true;' /docs/sources/registry/spec/json.md
+
+ADD https://raw.githubusercontent.com/docker/distribution/${DISTRIB_BRANCH}/docs/spec/auth/token.md /docs/sources/registry/spec/auth/token.md
+RUN sed -i.old '1s;^;no_version_dropdown: true;' /docs/sources/registry/spec/auth/token.md
 
 # Docker Swarm
 #ADD https://raw.githubusercontent.com/docker/swarm/${SWARM_BRANCH}/docs/mkdocs.yml /docs/mkdocs-swarm.yml
