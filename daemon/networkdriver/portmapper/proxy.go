@@ -20,7 +20,7 @@ import (
 const userlandProxyCommandName = "docker-proxy"
 
 func init() {
-	reexec.Register(userlandProxyCommandName, execProxy)
+	//reexec.Register(userlandProxyCommandName, execProxy)
 }
 
 type UserlandProxy interface {

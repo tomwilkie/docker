@@ -48,6 +48,7 @@ import (
 	"github.com/docker/docker/trust"
 	"github.com/docker/docker/utils"
 	"github.com/docker/docker/volumes"
+	"github.com/docker/libnetwork"
 
 	"github.com/go-fsnotify/fsnotify"
 )
@@ -114,6 +115,8 @@ type Daemon struct {
 	RegistryService  *registry.Service
 	EventsService    *events.Events
 	networks         NetworkRegistry
+	networkCtrlr     libnetwork.NetworkController
+	libnetworks      []libnetwork.Network
 }
 
 // Install installs daemon capabilities to eng.
@@ -1003,6 +1006,7 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine, registryService 
 		RegistryService:  registryService,
 		EventsService:    eventsService,
 		networks:         NewNetworkRegistry(networkRepoPath),
+		networkCtrlr:     libnetwork.New(),
 	}
 
 	eng.OnShutdown(func() {
