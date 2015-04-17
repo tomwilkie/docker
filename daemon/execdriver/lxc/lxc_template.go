@@ -9,7 +9,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/execdriver"
 	nativeTemplate "github.com/docker/docker/daemon/execdriver/native/template"
-	"github.com/docker/docker/utils"
+	"github.com/docker/docker/pkg/stringutils"
 	"github.com/docker/libcontainer/label"
 )
 
@@ -110,6 +110,9 @@ lxc.cgroup.cpu.shares = {{.Resources.CpuShares}}
 {{if .Resources.CpusetCpus}}
 lxc.cgroup.cpuset.cpus = {{.Resources.CpusetCpus}}
 {{end}}
+{{if .Resources.CpusetMems}}
+lxc.cgroup.cpuset.mems = {{.Resources.CpusetMems}}
+{{end}}
 {{end}}
 
 {{if .LxcConfig}}
@@ -177,7 +180,7 @@ func keepCapabilities(adds []string, drops []string) ([]string, error) {
 }
 
 func dropList(drops []string) ([]string, error) {
-	if utils.StringsContainsNoCase(drops, "all") {
+	if stringutils.InSlice(drops, "all") {
 		var newCaps []string
 		for _, capName := range execdriver.GetAllCapabilities() {
 			cap := execdriver.GetCapability(capName)
