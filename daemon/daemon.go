@@ -43,6 +43,7 @@ import (
 	"github.com/docker/docker/pkg/stringid"
 	"github.com/docker/docker/pkg/sysinfo"
 	"github.com/docker/docker/pkg/truncindex"
+	"github.com/docker/docker/plugins"
 	"github.com/docker/docker/registry"
 	"github.com/docker/docker/runconfig"
 	"github.com/docker/docker/trust"
@@ -1008,6 +1009,8 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine, registryService 
 		networks:         NewNetworkRegistry(networkRepoPath),
 		networkCtrlr:     libnetwork.New(),
 	}
+
+	plugins.Repo.AddType("net", daemon.registerLibNet)
 
 	eng.OnShutdown(func() {
 		if err := daemon.shutdown(); err != nil {
