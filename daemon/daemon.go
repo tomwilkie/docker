@@ -626,7 +626,7 @@ func (daemon *Daemon) newContainer(name string, config *runconfig.Config, imgID 
 	daemon.generateHostname(id, config)
 	entrypoint, args := daemon.getEntrypointAndArgs(config.Entrypoint, config.Cmd)
 
-	endpoints, err := daemon.endpointsOnNetworks(config.Networks)
+	endpoints, err := daemon.endpointsOnNetworksLib(config.Networks, id)
 	if err != nil {
 		return nil, err
 	}
@@ -646,7 +646,7 @@ func (daemon *Daemon) newContainer(name string, config *runconfig.Config, imgID 
 		ExecDriver:      daemon.execDriver.Name(),
 		State:           NewState(),
 		execCommands:    newExecStore(),
-		Endpoints:       endpoints,
+		LibNetworkEndpoints: endpoints,
 	}
 	container.root = daemon.containerRoot(container.ID)
 	return container, err
