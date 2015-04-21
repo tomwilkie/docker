@@ -269,15 +269,13 @@ func InterfaceOf(sbinfo *driverapi.SandboxInfo) ([]*execdriver.NetworkInterface,
 	for _, inf := range sbinfo.Interfaces {
 		prefixLen, _ := inf.Address.Mask.Size()
 		results = append(results, &execdriver.NetworkInterface{
-			Gateway:              sbinfo.Gateway.String(),
-			Bridge:               "",
+			Strategy:             "existing",
+			ExistingDevice:       inf.SrcName,
+
+			Gateway:              "",
 			IPAddress:            inf.Address.IP.String(),
 			IPPrefixLen:          prefixLen,
 			MacAddress:           inf.MACAddress,
-			LinkLocalIPv6Address: "",
-			GlobalIPv6Address:    "",
-			GlobalIPv6PrefixLen:  0,
-			IPv6Gateway:          "",
 		})
 	}
 	return results, nil
