@@ -264,20 +264,23 @@ func getDevicesFromPath(deviceMapping runconfig.DeviceMapping) (devs []*configs.
 	return devs, fmt.Errorf("error gathering device information while adding custom device %q: %s", deviceMapping.PathOnHost, err)
 }
 
-func InterfaceOf(sbinfo *driverapi.SandboxInfo) (*execdriver.NetworkInterface, error) {
-	var inf *driverapi.Interface = sbinfo.Interfaces[0]
-	prefixLen, _ := inf.Address.Mask.Size()
-	return &execdriver.NetworkInterface{
-		Gateway:              sbinfo.Gateway.String(),
-		Bridge:               "",
-		IPAddress:            inf.Address.IP.String(),
-		IPPrefixLen:          prefixLen,
-		MacAddress:           "",
-		LinkLocalIPv6Address: "",
-		GlobalIPv6Address:    "",
-		GlobalIPv6PrefixLen:  0,
-		IPv6Gateway:          "",
-	}, nil
+func InterfaceOf(sbinfo *driverapi.SandboxInfo) ([]*execdriver.NetworkInterface, error) {
+	var results []*execdriver.NetworkInterface
+	for _, inf := range sbinfo.Interfaces {
+		prefixLen, _ := inf.Address.Mask.Size()
+		results = append(results, &execdriver.NetworkInterface{
+			Gateway:              sbinfo.Gateway.String(),
+			Bridge:               "",
+			IPAddress:            inf.Address.IP.String(),
+			IPPrefixLen:          prefixLen,
+			MacAddress:           inf.MACAddress,
+			LinkLocalIPv6Address: "",
+			GlobalIPv6Address:    "",
+			GlobalIPv6PrefixLen:  0,
+			IPv6Gateway:          "",
+		})
+	}
+	return results, nil
 }
 
 func populateCommand(c *Container, env []string) error {
@@ -328,11 +331,11 @@ func populateCommand(c *Container, env []string) error {
 	// Plug enpoints for libnetwork
 	for _, endpoint := range c.LibNetworkEndpoints {
 		sbinfo := endpoint.SandboxInfo()
-		inf, err := InterfaceOf(sbinfo)
+		interfaces, err := InterfaceOf(sbinfo)
 		if err != nil {
 			return err
 		}
-		en.Interfaces = append(en.Interfaces, inf)
+		en.Interfaces = append(en.Interfaces, interfaces...)
 	}
 
 	ipc := &execdriver.Ipc{}

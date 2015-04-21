@@ -86,7 +86,7 @@ func (daemon *Daemon) endpointOnNetworkLib(namesOrId, containerID string, labels
 		return nil, err
 	}
 
-	endpoint, _, err := network.CreateEndpoint("", containerID, optionsOf(labels))
+	endpoint, err := network.CreateEndpoint("", containerID, optionsOf(labels))
 	return endpoint, err
 }
 
