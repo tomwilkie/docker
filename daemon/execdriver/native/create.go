@@ -89,20 +89,33 @@ func generateIfaceName() (string, error) {
 }
 
 func (d *driver) createInterface(net *execdriver.Network, inf *execdriver.NetworkInterface, container *configs.Config, i int) error {
-	iName, err := generateIfaceName()
-	if err != nil {
-		return err
-	}
+	var vethNetwork configs.Network
+	if inf.Strategy == "existing" {
+		vethNetwork = configs.Network{
+			Name:               fmt.Sprintf("eth%d", i),
+			ExistingNetDevName: inf.ExistingDevice,
+			Mtu:                net.Mtu,
+			Address:            fmt.Sprintf("%s/%d", inf.IPAddress, inf.IPPrefixLen),
+			MacAddress:         inf.MacAddress,
+			Gateway:            inf.Gateway,
+			Type:               "existing",
+		}
+	} else {
+		iName, err := generateIfaceName()
+		if err != nil {
+			return err
+		}
 
-	vethNetwork := configs.Network{
-		Name:              fmt.Sprintf("eth%d", i),
-		HostInterfaceName: iName,
-		Mtu:               net.Mtu,
-		Address:           fmt.Sprintf("%s/%d", inf.IPAddress, inf.IPPrefixLen),
-		MacAddress:        inf.MacAddress,
-		Gateway:           inf.Gateway,
-		Type:              "veth",
-		Bridge:            inf.Bridge,
+		vethNetwork = configs.Network{
+			Name:              fmt.Sprintf("eth%d", i),
+			HostInterfaceName: iName,
+			Mtu:               net.Mtu,
+			Address:           fmt.Sprintf("%s/%d", inf.IPAddress, inf.IPPrefixLen),
+			MacAddress:        inf.MacAddress,
+			Gateway:           inf.Gateway,
+			Type:              "veth",
+			Bridge:            inf.Bridge,
+		}
 	}
 	if inf.GlobalIPv6Address != "" {
 		vethNetwork.IPv6Address = fmt.Sprintf("%s/%d", inf.GlobalIPv6Address, inf.GlobalIPv6PrefixLen)

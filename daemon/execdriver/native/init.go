@@ -32,7 +32,10 @@ func initializer() {
 	if err != nil {
 		fatal(err)
 	}
-	if err := factory.StartInitialization(3); err != nil {
+
+	// I think this is needed to
+	os.Setenv("_LIBCONTAINER_INITPIPE", "3")
+	if err := factory.StartInitialization(); err != nil {
 		fatal(err)
 	}
 

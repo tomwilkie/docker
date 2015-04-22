@@ -43,11 +43,13 @@ import (
 	"github.com/docker/docker/pkg/stringid"
 	"github.com/docker/docker/pkg/sysinfo"
 	"github.com/docker/docker/pkg/truncindex"
+	"github.com/docker/docker/plugins"
 	"github.com/docker/docker/registry"
 	"github.com/docker/docker/runconfig"
 	"github.com/docker/docker/trust"
 	"github.com/docker/docker/utils"
 	"github.com/docker/docker/volumes"
+	"github.com/docker/libnetwork"
 
 	"github.com/go-fsnotify/fsnotify"
 )
@@ -114,6 +116,8 @@ type Daemon struct {
 	RegistryService  *registry.Service
 	EventsService    *events.Events
 	networks         NetworkRegistry
+	networkCtrlr     libnetwork.NetworkController
+	libnetworks      []libnetwork.Network
 }
 
 // Install installs daemon capabilities to eng.
@@ -622,7 +626,7 @@ func (daemon *Daemon) newContainer(name string, config *runconfig.Config, imgID 
 	daemon.generateHostname(id, config)
 	entrypoint, args := daemon.getEntrypointAndArgs(config.Entrypoint, config.Cmd)
 
-	endpoints, err := daemon.endpointsOnNetworks(config.Networks)
+	endpoints, err := daemon.endpointsOnNetworksLib(config.Networks, id)
 	if err != nil {
 		return nil, err
 	}
@@ -642,7 +646,7 @@ func (daemon *Daemon) newContainer(name string, config *runconfig.Config, imgID 
 		ExecDriver:      daemon.execDriver.Name(),
 		State:           NewState(),
 		execCommands:    newExecStore(),
-		Endpoints:       endpoints,
+		LibNetworkEndpoints: endpoints,
 	}
 	container.root = daemon.containerRoot(container.ID)
 	return container, err
@@ -1003,7 +1007,10 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine, registryService 
 		RegistryService:  registryService,
 		EventsService:    eventsService,
 		networks:         NewNetworkRegistry(networkRepoPath),
+		networkCtrlr:     libnetwork.New(),
 	}
+
+	plugins.Repo.AddType("net", daemon.registerLibNet)
 
 	eng.OnShutdown(func() {
 		if err := daemon.shutdown(); err != nil {

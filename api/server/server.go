@@ -37,6 +37,10 @@ import (
 	"github.com/docker/docker/utils"
 )
 
+const (
+	useLibNetwork = true
+)
+
 var (
 	activationLock = make(chan struct{})
 )
@@ -581,7 +585,12 @@ func getNetworksJSON(eng *engine.Engine, version version.Version, w http.Respons
 	}
 
 	d := getDaemon(eng)
-	networks := d.NetworkList()
+	var networks []types.NetworkResponse
+	if useLibNetwork {
+		networks = d.LibNetworkList()
+	} else {
+		networks = d.NetworkList()
+	}
 	return writeJSON(w, http.StatusOK, networks)
 }
 
@@ -936,7 +945,11 @@ func deleteNetworks(eng *engine.Engine, version version.Version, w http.Response
 		return err
 	}
 	d := getDaemon(eng)
-	return d.NetworkDestroy(vars["name"])
+	if useLibNetwork {
+		return d.LibNetworkDestroy(vars["name"])
+	} else {
+		return d.NetworkDestroy(vars["name"])
+	}
 }
 
 func postContainersStart(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
@@ -1164,7 +1177,13 @@ func postNetworkCreate(eng *engine.Engine, version version.Version, w http.Respo
 	}
 
 	d := getDaemon(eng)
-	id, err := d.NetworkCreate(vars["name"], driver, labels)
+	var id string
+	if useLibNetwork {
+		id, err = d.LibNetworkCreate(vars["name"], driver, labels)
+	} else {
+		id, err = d.NetworkCreate(vars["name"], driver, labels)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -1190,9 +1209,11 @@ func postNetworkPlug(eng *engine.Engine, version version.Version, w http.Respons
 	}
 
 	d := getDaemon(eng)
-	id, err := d.NetworkPlug(vars["name"], vars["network"], labels)
-	if err != nil {
-		return err
+	var id string
+	if useLibNetwork {
+		id, err = d.LibNetworkPlug(vars["name"], vars["network"], labels)
+	} else {
+		id, err = d.NetworkPlug(vars["name"], vars["network"], labels)
 	}
 
 	return writeJSON(w, http.StatusCreated, &types.NetworkPlugResponse{
@@ -1206,7 +1227,11 @@ func postNetworkUnplug(eng *engine.Engine, version version.Version, w http.Respo
 	}
 
 	d := getDaemon(eng)
-	return d.NetworkUnplug(vars["name"], vars["endpoint"])
+	if useLibNetwork {
+		return d.NetworkUnplug(vars["name"], vars["endpoint"])
+	} else {
+		return d.NetworkUnplug(vars["name"], vars["endpoint"])
+	}
 }
 
 func wsContainersAttach(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {

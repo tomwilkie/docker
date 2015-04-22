@@ -17,6 +17,7 @@ import (
 var strategies = map[string]networkStrategy{
 	"veth":     &veth{},
 	"loopback": &loopback{},
+	"existing": &existing{},
 }
 
 // networkStrategy represents a specific network configuration for
@@ -159,6 +160,10 @@ func (v *veth) initialize(config *network) error {
 	if peer == "" {
 		return fmt.Errorf("peer is not specified")
 	}
+	return initializeInterface(config, peer)
+}
+
+func initializeInterface(config *network, peer string) error {
 	child, err := net.InterfaceByName(peer)
 	if err != nil {
 		return err
@@ -210,4 +215,26 @@ func (v *veth) initialize(config *network) error {
 		}
 	}
 	return nil
+}
+
+// existing is a network strategy that usese an existing network device,
+// to be placed inside the container's network namespace
+type existing struct {
+}
+
+func (e *existing) create(n *network, nspid int) (err error) {
+	child, err := net.InterfaceByName(n.ExistingNetDevName)
+	if err != nil {
+		return err
+	}
+	return netlink.NetworkSetNsPid(child, nspid)
+}
+
+
+func (e *existing) initialize(config *network) error {
+	peer := config.ExistingNetDevName
+	if peer == "" {
+		return fmt.Errorf("peer is not specified")
+	}
+	return initializeInterface(config, peer)
 }

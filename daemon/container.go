@@ -18,6 +18,8 @@ import (
 	"github.com/docker/libcontainer/configs"
 	"github.com/docker/libcontainer/devices"
 	"github.com/docker/libcontainer/label"
+	"github.com/docker/libnetwork"
+	"github.com/docker/libnetwork/driverapi"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/execdriver"
@@ -112,7 +114,8 @@ type Container struct {
 	logCopier          *logger.Copier
 	AppliedVolumesFrom map[string]struct{}
 
-	Endpoints []*Endpoint
+	Endpoints          []*Endpoint
+	LibNetworkEndpoints []libnetwork.Endpoint
 }
 
 func (container *Container) FromDisk() error {
@@ -261,6 +264,23 @@ func getDevicesFromPath(deviceMapping runconfig.DeviceMapping) (devs []*configs.
 	return devs, fmt.Errorf("error gathering device information while adding custom device %q: %s", deviceMapping.PathOnHost, err)
 }
 
+func InterfaceOf(sbinfo *driverapi.SandboxInfo) ([]*execdriver.NetworkInterface, error) {
+	var results []*execdriver.NetworkInterface
+	for _, inf := range sbinfo.Interfaces {
+		prefixLen, _ := inf.Address.Mask.Size()
+		results = append(results, &execdriver.NetworkInterface{
+			Strategy:             "existing",
+			ExistingDevice:       inf.SrcName,
+
+			Gateway:              "",
+			IPAddress:            inf.Address.IP.String(),
+			IPPrefixLen:          prefixLen,
+			MacAddress:           inf.MACAddress,
+		})
+	}
+	return results, nil
+}
+
 func populateCommand(c *Container, env []string) error {
 	en := &execdriver.Network{
 		Mtu:       c.daemon.config.Mtu,
@@ -304,6 +324,16 @@ func populateCommand(c *Container, env []string) error {
 			return err
 		}
 		en.Interfaces = append(en.Interfaces, inf)
+	}
+
+	// Plug enpoints for libnetwork
+	for _, endpoint := range c.LibNetworkEndpoints {
+		sbinfo := endpoint.SandboxInfo()
+		interfaces, err := InterfaceOf(sbinfo)
+		if err != nil {
+			return err
+		}
+		en.Interfaces = append(en.Interfaces, interfaces...)
 	}
 
 	ipc := &execdriver.Ipc{}

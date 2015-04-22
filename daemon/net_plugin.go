@@ -61,6 +61,6 @@ func registerNet(name string, plugin *plugins.Plugin) error {
 	return nil
 }
 
-func init() {
-	plugins.Repo.AddType("net", registerNet)
-}
+//func init() {
+//	plugins.Repo.AddType("net", registerNet)
+//}

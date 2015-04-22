@@ -48,6 +48,10 @@ type Network struct {
 	// Note: This is unsupported on some systems.
 	// Note: This does not apply to loopback interfaces.
 	HairpinMode bool `json:"hairpin_mode"`
+
+	// ExistingNetDevName is the name of an existing network device to be placed
+	// into the container's namespace.
+	ExistingNetDevName string `json:"existing_net_dev_name"`
 }
 
 // Routes can be specified to create entries in the route table as the container is started
