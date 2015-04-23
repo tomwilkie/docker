@@ -45,47 +45,47 @@ This document contains notes pertaining to Weavework's proof of concept implemen
 
 # Basic walkthrough:
 
-# docker net create --driver simplebridge
-67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1
-# docker net list
-NETWORK ID                                                         NAME                DRIVER              LABELS
-67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1   stupefied_fermi     noop                {}
-# docker create -i ubuntu /bin/bash
-5e24637c4a1a8cfd2d5b44a1041496b9a599ba986349b636fd615126bd3e9a82
-# docker ps -a
-CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
-5e24637c4a1a        ubuntu:latest       "/bin/bash"         4 seconds ago                                               backstabbing_hopper
-# docker net plug backstabbing_hopper stupefied_fermi
-5a624939c64c751c6276f852c2a01e54de49ba2894d922a07feebd2c56834900
-# docker start -i backstabbing_hopper
->
-> ifconfig -a
-eth0      Link encap:Ethernet  HWaddr 02:42:0a:00:00:02
-          inet addr:10.0.0.2  Bcast:0.0.0.0  Mask:255.255.0.0
-          inet6 addr: fe80::42:aff:fe00:2/64 Scope:Link
-          UP BROADCAST RUNNING  MTU:1500  Metric:1
-          RX packets:16 errors:0 dropped:0 overruns:0 frame:0
-          TX packets:8 errors:0 dropped:0 overruns:0 carrier:0
-          collisions:0 txqueuelen:0
-          RX bytes:1296 (1.2 KB)  TX bytes:648 (648.0 B)
+    # docker net create --driver simplebridge
+    67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1
+    # docker net list
+    NETWORK ID                                                         NAME                DRIVER              LABELS
+    67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1   stupefied_fermi     noop                {}
+    # docker create -i ubuntu /bin/bash
+    5e24637c4a1a8cfd2d5b44a1041496b9a599ba986349b636fd615126bd3e9a82
+    # docker ps -a
+    CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+    5e24637c4a1a        ubuntu:latest       "/bin/bash"         4 seconds ago                                               backstabbing_hopper
+    # docker net plug backstabbing_hopper stupefied_fermi
+    5a624939c64c751c6276f852c2a01e54de49ba2894d922a07feebd2c56834900
+    # docker start -i backstabbing_hopper
+    >
+    > ifconfig -a
+    eth0      Link encap:Ethernet  HWaddr 02:42:0a:00:00:02
+              inet addr:10.0.0.2  Bcast:0.0.0.0  Mask:255.255.0.0
+              inet6 addr: fe80::42:aff:fe00:2/64 Scope:Link
+              UP BROADCAST RUNNING  MTU:1500  Metric:1
+              RX packets:16 errors:0 dropped:0 overruns:0 frame:0
+              TX packets:8 errors:0 dropped:0 overruns:0 carrier:0
+              collisions:0 txqueuelen:0
+              RX bytes:1296 (1.2 KB)  TX bytes:648 (648.0 B)
 
-eth1      Link encap:Ethernet  HWaddr 02:42:0a:03:00:01
-          inet addr:10.0.0.6  Bcast:0.0.0.0  Mask:255.255.0.0
-          inet6 addr: fe80::42:aff:fe03:1/64 Scope:Link
-          UP BROADCAST RUNNING  MTU:1500  Metric:1
-          RX packets:15 errors:0 dropped:0 overruns:0 frame:0
-          TX packets:8 errors:0 dropped:0 overruns:0 carrier:0
-          collisions:0 txqueuelen:0
-          RX bytes:1206 (1.2 KB)  TX bytes:648 (648.0 B)
+    eth1      Link encap:Ethernet  HWaddr 02:42:0a:03:00:01
+              inet addr:10.0.0.6  Bcast:0.0.0.0  Mask:255.255.0.0
+              inet6 addr: fe80::42:aff:fe03:1/64 Scope:Link
+              UP BROADCAST RUNNING  MTU:1500  Metric:1
+              RX packets:15 errors:0 dropped:0 overruns:0 frame:0
+              TX packets:8 errors:0 dropped:0 overruns:0 carrier:0
+              collisions:0 txqueuelen:0
+              RX bytes:1206 (1.2 KB)  TX bytes:648 (648.0 B)
 
-lo        Link encap:Local Loopback
-          inet addr:127.0.0.1  Mask:255.0.0.0
-          inet6 addr: ::1/128 Scope:Host
-          UP LOOPBACK RUNNING  MTU:65536  Metric:1
-          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
-          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
-          collisions:0 txqueuelen:0
-          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+    lo        Link encap:Local Loopback
+              inet addr:127.0.0.1  Mask:255.0.0.0
+              inet6 addr: ::1/128 Scope:Host
+              UP LOOPBACK RUNNING  MTU:65536  Metric:1
+              RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+              TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+              collisions:0 txqueuelen:0
+              RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
 
 # Example usecases / potential network plugins
 Given weird usecase A, how might I implement a plugin to achieve it?
