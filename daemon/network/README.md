@@ -1,8 +1,23 @@
-'Design' choices:
+This document contains notes pertaining to Weavework's proof of concept implementation of the Container Network Model, using libcontainer and Jeff's plugin transport mechanism.
+
+# How to build
+    # mkdir -p $GOPATH/src/github.com/docker
+    # cd $GOPATH/src/github.com/docker
+    # git clone --branch network_extensions http://github.com/tomwilkie/docker
+    # git clone --branch dev http://github.com/tomwilkie/libnetwork docker/vendor/src/github.com/docker/libnetwork
+    # rm -rf docker/vendor/src/github.com/docker/libcontainer
+    # git clone --branch existing_strategy http://github.com/tomwilkie/libcontainer docker/vendor/src/github.com/docker/libcontainer
+    # mkdir docker/vendor/src/github.com/vishvananda
+    # git clone http://github.com/vishvananda/netlink.git docker/vendor/src/github.com/vishvananda/netlink
+    # cd docker
+    # make
+    # sudo ./bundles/1.7.0-plugins/binary/docker -dD
+
+# 'Design' choices:
 - choose verb plug and unplug (vs attach and detach) so we don't clash with container attach
 - containers can have multiple endpoints on a given network implies unplug takes container id and endpoint id
 
-Next steps are:
+# Next steps are:
 - <s>boilerplate, internal datastructures</s>
 - <s>find appropriate hook in points for plug</s>
 - <s>docker run support</s>
@@ -11,27 +26,26 @@ Next steps are:
 - <s>make a plausible default/simple bridge driver</s>
 - <s>persistence and tear down / setup</s>
 - <s>transport to external plugins (lukestensions?)</s>
-- implement weave plugin.
+- <s>implement weave plugin.</s>
 - make plug work for running containers
 - drivers will want to specify a resolver, probably
 
-Little things
+# Little things
 - <s>Make net create cli print id of network</s>
 - <s>Make net plug print id of endpoint</s>
-- Shorten network id in list
+- Shorten network id in docker net list
 - Show interfaces and network on docker inspect; show containers on docker net list
 
-Open Questions:
+# Open Questions:
 - <s>Should networks have ids and names (both unique)</s> Yes
 - <s>Should endpoints have names?</s> No, just IDs
 - libcontainer doesn't seem to have code to add veth pair to running container - should we add it there?
-- What is 'container mode' networking, and could we use that to fake out this whole thing?
 - Endpoints will need references to containers (ids/names at least); need to deal with circular references in json encoding
 
 
-Basic walkthrough:
+# Basic walkthrough:
 
-# docker net create --driver noop
+# docker net create --driver simplebridge
 67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1
 # docker net list
 NETWORK ID                                                         NAME                DRIVER              LABELS
