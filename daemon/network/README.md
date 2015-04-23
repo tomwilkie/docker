@@ -86,3 +86,67 @@ lo        Link encap:Local Loopback
           TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
           collisions:0 txqueuelen:0
           RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+# Example usecases / potential network plugins
+Given weird usecase A, how might I implement a plugin to achieve it?
+
+## Simple bridging
+
+Usecase: User is running on single host, and wants to let containers talk to each other.
+
+Potential implementation:
+- Driver would create a bridge per network with arbitrary subnet.
+- Driver would give each interface on network a unique IP
+
+Alternative:
+- Everyone connects to the same bridge
+- Different networks = different ip allocators and subnets
+
+## NAT
+
+Usecase: User is running on single host, want containers to access internet using NAT
+
+Potential implementation:
+- As above; driver could configure nat for the bridge
+- Driver will need to offer a default route.
+
+## ‘Real’ IP per container
+
+Usecase: User is running container host on network with DHCP, DNS etc.  Wants each container to just grab address via DHCP, and effectively be first class citizens on external network.  Wants to allow containers to talk to everything…
+
+
+Potential implementation:
+- NB this is how VMWare, XenServer tend to operate.  Hosts must be able to spoof macs, which precludes doing this on EC2, GCE
+- Driver would create bridge, and add the physical interface to it.
+  - Would also need to add veth pair for host OS with hosts original MAC?  Or can original IP be copied to bridge device?
+- Driver could also do DHCP request on interface plug, so each container isn’t required to run a dhcp client.  Results (host name, routes etc) would be returned from plugin to weave.
+- Drivers would need to be able to do things like set containers router, nameserver, default search path - everything dhcp can do.
+- User would probably want to pass mac address to plugin on create/attach, so they have some control of IP address and name.
+- Won’t work on the cloud...
+
+## External VLANs
+
+Usecase: User is running container host on network with VLANs.  Wants to be able to attach a container to a physical VLAN.  Want containers to just grab address via DHCP, and effectively be first class citizens on external network.
+
+Potential implementation:
+- Ad above - one bridge, different vlans could be different network
+- veth pair would need to set and clear the vlan fields in frame headers.
+
+## Weave
+
+Usecase: User is on a network which won’t give him IPs, and wants to allow containers on communicate across hosts.
+
+Potential implementation
+- Single weave overlay network, different networks are different subnets
+
+Or:
+- Multiple weave overlay networks, one per network.
+
+## Google-esqe
+
+Usecase: User wants to map different ports on the host to different containers; wants to allow containers to talk to each other on the ‘real’ network.
+
+Potential implementation:
+- Firewall rules; interface represents a firewall rule allowing processes in container to listen on said port. ?
+- Or could be done with NATing.  Container won’t know real ip address... ?
+- I don't know
