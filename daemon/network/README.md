@@ -1,17 +1,17 @@
 This document contains notes pertaining to Weavework's proof of concept implementation of the Container Network Model, using libcontainer and Jeff's plugin transport mechanism.
 
 # How to build
-    # mkdir -p $GOPATH/src/github.com/docker
-    # cd $GOPATH/src/github.com/docker
-    # git clone --branch network_extensions http://github.com/tomwilkie/docker
-    # git clone --branch dev http://github.com/tomwilkie/libnetwork docker/vendor/src/github.com/docker/libnetwork
-    # rm -rf docker/vendor/src/github.com/docker/libcontainer
-    # git clone --branch existing_strategy http://github.com/tomwilkie/libcontainer docker/vendor/src/github.com/docker/libcontainer
-    # mkdir docker/vendor/src/github.com/vishvananda
-    # git clone http://github.com/vishvananda/netlink.git docker/vendor/src/github.com/vishvananda/netlink
-    # cd docker
-    # make
-    # sudo ./bundles/1.7.0-plugins/binary/docker -dD
+    mkdir -p $GOPATH/src/github.com/docker
+    cd $GOPATH/src/github.com/docker
+    git clone --branch network_extensions http://github.com/tomwilkie/docker
+    git clone --branch dev http://github.com/tomwilkie/libnetwork docker/vendor/src/github.com/docker/libnetwork
+    rm -rf docker/vendor/src/github.com/docker/libcontainer
+    git clone --branch existing_strategy http://github.com/tomwilkie/libcontainer docker/vendor/src/github.com/docker/libcontainer
+    mkdir docker/vendor/src/github.com/vishvananda
+    git clone http://github.com/vishvananda/netlink.git docker/vendor/src/github.com/vishvananda/netlink
+    cd docker
+    make
+    sudo ./bundles/1.7.0-plugins/binary/docker -dD
 
 # 'Design' choices:
 - choose verb plug and unplug (vs attach and detach) so we don't clash with container attach
@@ -46,20 +46,20 @@ This document contains notes pertaining to Weavework's proof of concept implemen
 # Basic walkthrough:
 
 # docker net create --driver simplebridge
-67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1
+    67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1
 # docker net list
-NETWORK ID                                                         NAME                DRIVER              LABELS
-67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1   stupefied_fermi     noop                {}
+    NETWORK ID                                                         NAME                DRIVER              LABELS
+    67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1   stupefied_fermi     noop                {}
 # docker create -i ubuntu /bin/bash
-5e24637c4a1a8cfd2d5b44a1041496b9a599ba986349b636fd615126bd3e9a82
+    5e24637c4a1a8cfd2d5b44a1041496b9a599ba986349b636fd615126bd3e9a82
 # docker ps -a
-CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
-5e24637c4a1a        ubuntu:latest       "/bin/bash"         4 seconds ago                                               backstabbing_hopper
+    CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+    5e24637c4a1a        ubuntu:latest       "/bin/bash"         4 seconds ago                                               backstabbing_hopper
 # docker net plug backstabbing_hopper stupefied_fermi
-5a624939c64c751c6276f852c2a01e54de49ba2894d922a07feebd2c56834900
+    5a624939c64c751c6276f852c2a01e54de49ba2894d922a07feebd2c56834900
 # docker start -i backstabbing_hopper
->
-> ifconfig -a
+````
+ifconfig -a
 eth0      Link encap:Ethernet  HWaddr 02:42:0a:00:00:02
           inet addr:10.0.0.2  Bcast:0.0.0.0  Mask:255.255.0.0
           inet6 addr: fe80::42:aff:fe00:2/64 Scope:Link
@@ -86,3 +86,4 @@ lo        Link encap:Local Loopback
           TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
           collisions:0 txqueuelen:0
           RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+````
