@@ -1,17 +1,17 @@
 This document contains notes pertaining to Weavework's proof of concept implementation of the Container Network Model, using libcontainer and Jeff's plugin transport mechanism.
 
 # How to build
-    # mkdir -p $GOPATH/src/github.com/docker
-    # cd $GOPATH/src/github.com/docker
-    # git clone --branch network_extensions http://github.com/tomwilkie/docker
-    # git clone --branch dev http://github.com/tomwilkie/libnetwork docker/vendor/src/github.com/docker/libnetwork
-    # rm -rf docker/vendor/src/github.com/docker/libcontainer
-    # git clone --branch existing_strategy http://github.com/tomwilkie/libcontainer docker/vendor/src/github.com/docker/libcontainer
-    # mkdir docker/vendor/src/github.com/vishvananda
-    # git clone http://github.com/vishvananda/netlink.git docker/vendor/src/github.com/vishvananda/netlink
-    # cd docker
-    # make
-    # sudo ./bundles/1.7.0-plugins/binary/docker -dD
+    mkdir -p $GOPATH/src/github.com/docker
+    cd $GOPATH/src/github.com/docker
+    git clone --branch network_extensions http://github.com/tomwilkie/docker
+    git clone --branch dev http://github.com/tomwilkie/libnetwork docker/vendor/src/github.com/docker/libnetwork
+    rm -rf docker/vendor/src/github.com/docker/libcontainer
+    git clone --branch existing_strategy http://github.com/tomwilkie/libcontainer docker/vendor/src/github.com/docker/libcontainer
+    mkdir docker/vendor/src/github.com/vishvananda
+    git clone http://github.com/vishvananda/netlink.git docker/vendor/src/github.com/vishvananda/netlink
+    cd docker
+    make
+    sudo ./bundles/1.7.0-plugins/binary/docker -dD
 
 # 'Design' choices:
 - choose verb plug and unplug (vs attach and detach) so we don't clash with container attach
@@ -44,6 +44,7 @@ This document contains notes pertaining to Weavework's proof of concept implemen
 
 
 # Basic walkthrough:
+
 
     # docker net create --driver simplebridge
     67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1
