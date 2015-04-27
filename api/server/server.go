@@ -1272,7 +1272,8 @@ func (s *Server) postNetworkCreate(eng *engine.Engine, version version.Version, 
 		return err
 	}
 
-	id, err := s.daemon.NetworkCreate(vars["name"], driver, labels)
+	name, _ := getString("Name", body)
+	id, err := s.daemon.NetworkCreate(name, driver, labels)
 	if err != nil {
 		return err
 	}
@@ -1280,6 +1281,32 @@ func (s *Server) postNetworkCreate(eng *engine.Engine, version version.Version, 
 	return writeJSON(w, http.StatusCreated, &types.NetworkResponse{
 		ID: id,
 	})
+}
+
+func (s *Server) postNetworkConfigure(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
+	if err := parseForm(r); err != nil {
+		return err
+	}
+	if err := checkForJson(r); err != nil {
+		return err
+	}
+
+	body := make(map[string]interface{})
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return err
+	}
+
+	driver, err := getString("Driver", body)
+	if err != nil {
+		return err
+	}
+
+	labels, err := getLabels(body)
+	if err != nil {
+		return err
+	}
+
+	return s.daemon.NetworkConfigure(driver, labels)
 }
 
 func (s *Server) postNetworkPlug(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
@@ -1750,7 +1777,8 @@ func createRouter(s *Server, eng *engine.Engine) *mux.Router {
 
 			"/container/{name:.*}/plug/{network:.*}":    s.postNetworkPlug,
 			"/container/{name:.*}/unplug/{endpoint:.*}": s.postNetworkUnplug,
-			"/networks/{name:.*}":                       s.postNetworkCreate,
+			"/networks/configure":                       s.postNetworkConfigure,
+			"/networks/create":                          s.postNetworkCreate,
 		},
 		"DELETE": {
 			"/containers/{name:.*}": s.deleteContainers,
