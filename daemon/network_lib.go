@@ -9,6 +9,7 @@ import (
 	"github.com/docker/libnetwork/pkg/options"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/plugins"
 )
 
 func optionsOf(labels map[string]string) options.Generic {
@@ -141,5 +142,10 @@ func (daemon *Daemon) NetworkUnplug(containedID, endpointID string) error {
 
 	container.LibNetworkEndpoints = container.LibNetworkEndpoints[:i+copy(
 		container.LibNetworkEndpoints[i:], container.LibNetworkEndpoints[i+1:])]
+	return nil
+}
+
+func (daemon *Daemon) registerLibNet(name string, plugin *plugins.Plugin) error {
+	daemon.networkCtrlr.RegisterExternalDriver(name, plugin)
 	return nil
 }
