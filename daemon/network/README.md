@@ -9,6 +9,7 @@ This document contains notes pertaining to Weavework's proof of concept implemen
     git clone --branch existing_strategy http://github.com/tomwilkie/libcontainer docker/vendor/src/github.com/docker/libcontainer
     mkdir docker/vendor/src/github.com/vishvananda
     git clone http://github.com/vishvananda/netlink.git docker/vendor/src/github.com/vishvananda/netlink
+    git clone http://github.com/vishvananda/netns.git docker/vendor/src/github.com/vishvananda/netns
     cd docker
     make
     sudo ./bundles/1.7.0-plugins/binary/docker -dD
@@ -46,11 +47,11 @@ This document contains notes pertaining to Weavework's proof of concept implemen
 # Basic walkthrough:
 
 
-    # docker net create --driver simplebridge
+    # docker net create --driver bridge
     67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1
     # docker net list
     NETWORK ID                                                         NAME                DRIVER              LABELS
-    67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1   stupefied_fermi     noop                {}
+    67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1   stupefied_fermi     bridge              {}
     # docker create -i ubuntu /bin/bash
     5e24637c4a1a8cfd2d5b44a1041496b9a599ba986349b636fd615126bd3e9a82
     # docker ps -a
