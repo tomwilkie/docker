@@ -22,6 +22,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/builder/parser"
 	"github.com/docker/docker/daemon"
+	"github.com/docker/docker/graph"
 	imagepkg "github.com/docker/docker/image"
 	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/chrootarchive"
@@ -35,6 +36,7 @@ import (
 	"github.com/docker/docker/pkg/system"
 	"github.com/docker/docker/pkg/tarsum"
 	"github.com/docker/docker/pkg/urlutil"
+	"github.com/docker/docker/registry"
 	"github.com/docker/docker/runconfig"
 )
 
@@ -434,24 +436,29 @@ func (b *Builder) pullImage(name string) (*imagepkg.Image, error) {
 	if tag == "" {
 		tag = "latest"
 	}
-	job := b.Engine.Job("pull", remote, tag)
+
 	pullRegistryAuth := b.AuthConfig
-	if len(b.AuthConfigFile.Configs) > 0 {
+	if len(b.ConfigFile.AuthConfigs) > 0 {
 		// The request came with a full auth config file, we prefer to use that
 		repoInfo, err := b.Daemon.RegistryService.ResolveRepository(remote)
 		if err != nil {
 			return nil, err
 		}
-		resolvedAuth := b.AuthConfigFile.ResolveAuthConfig(repoInfo.Index)
+		resolvedAuth := registry.ResolveAuthConfig(b.ConfigFile, repoInfo.Index)
 		pullRegistryAuth = &resolvedAuth
 	}
-	job.SetenvBool("json", b.StreamFormatter.Json())
-	job.SetenvBool("parallel", true)
-	job.SetenvJson("authConfig", pullRegistryAuth)
-	job.Stdout.Add(ioutils.NopWriteCloser(b.OutOld))
-	if err := job.Run(); err != nil {
+
+	imagePullConfig := &graph.ImagePullConfig{
+		Parallel:   true,
+		AuthConfig: pullRegistryAuth,
+		OutStream:  ioutils.NopWriteCloser(b.OutOld),
+		Json:       b.StreamFormatter.Json(),
+	}
+
+	if err := b.Daemon.Repositories().Pull(remote, tag, imagePullConfig); err != nil {
 		return nil, err
 	}
+
 	image, err := b.Daemon.Repositories().LookupImage(name)
 	if err != nil {
 		return nil, err
@@ -540,6 +547,7 @@ func (b *Builder) create() (*daemon.Container, error) {
 
 	hostConfig := &runconfig.HostConfig{
 		CpuShares:  b.cpuShares,
+		CpuQuota:   b.cpuQuota,
 		CpusetCpus: b.cpuSetCpus,
 		CpusetMems: b.cpuSetMems,
 		Memory:     b.memory,
@@ -603,11 +611,10 @@ func (b *Builder) run(c *daemon.Container) error {
 
 	// Wait for it to finish
 	if ret, _ := c.WaitStop(-1 * time.Second); ret != 0 {
-		err := &jsonmessage.JSONError{
+		return &jsonmessage.JSONError{
 			Message: fmt.Sprintf("The command %v returned a non-zero code: %d", b.Config.Cmd, ret),
 			Code:    ret,
 		}
-		return err
 	}
 
 	return nil

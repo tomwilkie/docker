@@ -156,7 +156,7 @@ Images using the v2 or later image format have a content-addressable identifier
 called a digest. As long as the input used to generate the image is unchanged,
 the digest value is predictable and referenceable.
 
-## PID Settings (--pid)
+## PID settings (--pid)
     --pid=""  : Set the PID (Process) Namespace mode for the container,
            'host': use the host's PID namespace inside the container
 
@@ -177,7 +177,7 @@ within the container.
 This command would allow you to use `strace` inside the container on pid 1234 on
 the host.
 
-## IPC Settings (--ipc)
+## IPC settings (--ipc)
 
     --ipc=""  : Set the IPC mode for the container,
                  'container:<name|id>': reuses another container's IPC namespace
@@ -380,7 +380,7 @@ This means the daemon will wait for 100 ms, then 200 ms, 400, 800, 1600,
 and so on until either the `on-failure` limit is hit, or when you `docker stop`
 or `docker rm -f` the container.
 
-If a container is succesfully restarted (the container is started and runs
+If a container is successfully restarted (the container is started and runs
 for at least 10 seconds), the delay is reset to its default value of 100 ms.
 
 You can specify the maximum amount of times Docker will try to restart the
@@ -475,6 +475,7 @@ container:
     -c, --cpu-shares=0: CPU shares (relative weight)
     --cpuset-cpus="": CPUs in which to allow execution (0-3, 0,1)
     --cpuset-mems="": Memory nodes (MEMs) in which to allow execution (0-3, 0,1). Only effective on NUMA systems.
+    --cpu-quota=0: Limit the CPU CFS (Completely Fair Scheduler) quota
 
 ### Memory constraints
 
@@ -614,6 +615,15 @@ memory nodes 1 and 3.
 
 This example restricts the processes in the container to only use memory from
 memory nodes 0, 1 and 2.
+
+### CPU quota constraint
+
+The `--cpu-quota` flag limits the container's CPU usage. The default 0 value
+allows the container to take 100% of a CPU resource (1 CPU). The CFS (Completely Fair
+Scheduler) handles resource allocation for executing processes and is default
+Linux Scheduler used by the kernel. Set this value to 50000 to limit the container
+to 50% of a CPU resource. For multiple CPUs, adjust the `--cpu-quota` as necessary.
+For more information, see the [CFS documentation on bandwidth limiting](https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt).
 
 ## Runtime privilege, Linux capabilities, and LXC configuration
 
@@ -777,6 +787,10 @@ command is available only for this logging driver
 
 Syslog logging driver for Docker. Writes log messages to syslog. `docker logs`
 command is not available for this logging driver
+
+#### Logging driver: journald
+
+Journald logging driver for Docker. Writes log messages to journald. `docker logs` command is not available for this logging driver
 
 ## Overriding Dockerfile image defaults
 

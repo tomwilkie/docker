@@ -110,7 +110,6 @@ type Daemon struct {
 	containerGraph   *graphdb.Database
 	driver           graphdriver.Driver
 	execDriver       execdriver.Driver
-	trustStore       *trust.TrustStore
 	statsCollector   *statsCollector
 	defaultLogConfig runconfig.LogConfig
 	RegistryService  *registry.Service
@@ -122,22 +121,6 @@ type Daemon struct {
 
 // Install installs daemon capabilities to eng.
 func (daemon *Daemon) Install(eng *engine.Engine) error {
-	for name, method := range map[string]engine.Handler{
-		"container_inspect": daemon.ContainerInspect,
-		"info":              daemon.CmdInfo,
-		"execCreate":        daemon.ContainerExecCreate,
-		"execStart":         daemon.ContainerExecStart,
-	} {
-		if err := eng.Register(name, method); err != nil {
-			return err
-		}
-	}
-	if err := daemon.Repositories().Install(eng); err != nil {
-		return err
-	}
-	if err := daemon.trustStore.Install(eng); err != nil {
-		return err
-	}
 	// FIXME: this hack is necessary for legacy integration tests to access
 	// the daemon object.
 	eng.HackSetGlobalVar("httpapi.daemon", daemon)
@@ -199,8 +182,6 @@ func (daemon *Daemon) load(id string) (*Container, error) {
 	if container.ID != id {
 		return container, fmt.Errorf("Container %s is stored at %s", container.ID, id)
 	}
-
-	container.readHostConfig()
 
 	return container, nil
 }
@@ -924,20 +905,27 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine, registryService 
 		return nil, err
 	}
 
-	eventsService := events.New()
-	logrus.Debug("Creating repository list")
-	repositories, err := graph.NewTagStore(path.Join(config.Root, "repositories-"+driver.String()), g, trustKey, registryService, eventsService)
-	if err != nil {
-		return nil, fmt.Errorf("Couldn't create Tag store: %s", err)
-	}
-
 	trustDir := path.Join(config.Root, "trust")
 	if err := os.MkdirAll(trustDir, 0700); err != nil && !os.IsExist(err) {
 		return nil, err
 	}
-	t, err := trust.NewTrustStore(trustDir)
+	trustService, err := trust.NewTrustStore(trustDir)
 	if err != nil {
 		return nil, fmt.Errorf("could not create trust store: %s", err)
+	}
+
+	eventsService := events.New()
+	logrus.Debug("Creating repository list")
+	tagCfg := &graph.TagStoreConfig{
+		Graph:    g,
+		Key:      trustKey,
+		Registry: registryService,
+		Events:   eventsService,
+		Trust:    trustService,
+	}
+	repositories, err := graph.NewTagStore(path.Join(config.Root, "repositories-"+driver.String()), tagCfg)
+	if err != nil {
+		return nil, fmt.Errorf("Couldn't create Tag store: %s", err)
 	}
 
 	if !config.DisableNetwork {
@@ -1001,7 +989,6 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine, registryService 
 		sysInitPath:      sysInitPath,
 		execDriver:       ed,
 		eng:              eng,
-		trustStore:       t,
 		statsCollector:   newStatsCollector(1 * time.Second),
 		defaultLogConfig: config.LogConfig,
 		RegistryService:  registryService,
@@ -1247,5 +1234,58 @@ func checkKernel() error {
 			}
 		}
 	}
+	return nil
+}
+
+func (daemon *Daemon) verifyHostConfig(hostConfig *runconfig.HostConfig) ([]string, error) {
+	var warnings []string
+
+	if hostConfig == nil {
+		return warnings, nil
+	}
+
+	if hostConfig.LxcConf.Len() > 0 && !strings.Contains(daemon.ExecutionDriver().Name(), "lxc") {
+		return warnings, fmt.Errorf("Cannot use --lxc-conf with execdriver: %s", daemon.ExecutionDriver().Name())
+	}
+	if hostConfig.Memory != 0 && hostConfig.Memory < 4194304 {
+		return warnings, fmt.Errorf("Minimum memory limit allowed is 4MB")
+	}
+	if hostConfig.Memory > 0 && !daemon.SystemConfig().MemoryLimit {
+		warnings = append(warnings, "Your kernel does not support memory limit capabilities. Limitation discarded.")
+		hostConfig.Memory = 0
+	}
+	if hostConfig.Memory > 0 && hostConfig.MemorySwap != -1 && !daemon.SystemConfig().SwapLimit {
+		warnings = append(warnings, "Your kernel does not support swap limit capabilities, memory limited without swap.")
+		hostConfig.MemorySwap = -1
+	}
+	if hostConfig.Memory > 0 && hostConfig.MemorySwap > 0 && hostConfig.MemorySwap < hostConfig.Memory {
+		return warnings, fmt.Errorf("Minimum memoryswap limit should be larger than memory limit, see usage.")
+	}
+	if hostConfig.Memory == 0 && hostConfig.MemorySwap > 0 {
+		return warnings, fmt.Errorf("You should always set the Memory limit when using Memoryswap limit, see usage.")
+	}
+	if hostConfig.CpuQuota > 0 && !daemon.SystemConfig().CpuCfsQuota {
+		warnings = append(warnings, "Your kernel does not support CPU cfs quota. Quota discarded.")
+		hostConfig.CpuQuota = 0
+	}
+
+	return warnings, nil
+}
+
+func (daemon *Daemon) setHostConfig(container *Container, hostConfig *runconfig.HostConfig) error {
+	container.Lock()
+	defer container.Unlock()
+	if err := parseSecurityOpt(container, hostConfig); err != nil {
+		return err
+	}
+
+	// Register any links from the host config before starting the container
+	if err := daemon.RegisterLinks(container, hostConfig); err != nil {
+		return err
+	}
+
+	container.hostConfig = hostConfig
+	container.toDisk()
+
 	return nil
 }

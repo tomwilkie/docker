@@ -24,6 +24,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/execdriver"
 	"github.com/docker/docker/daemon/logger"
+	"github.com/docker/docker/daemon/logger/journald"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
 	"github.com/docker/docker/daemon/logger/syslog"
 	"github.com/docker/docker/daemon/network"
@@ -185,11 +186,13 @@ func (container *Container) readHostConfig() error {
 		return nil
 	}
 
-	data, err := ioutil.ReadFile(pth)
+	f, err := os.Open(pth)
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(data, container.hostConfig)
+	defer f.Close()
+
+	return json.NewDecoder(f).Decode(&container.hostConfig)
 }
 
 func (container *Container) WriteHostConfig() error {
@@ -399,6 +402,7 @@ func populateCommand(c *Container, env []string) error {
 		CpuShares:  c.hostConfig.CpuShares,
 		CpusetCpus: c.hostConfig.CpusetCpus,
 		CpusetMems: c.hostConfig.CpusetMems,
+		CpuQuota:   c.hostConfig.CpuQuota,
 		Rlimits:    rlimits,
 	}
 
@@ -1004,37 +1008,35 @@ func (container *Container) GetSize() (int64, int64) {
 }
 
 func (container *Container) Copy(resource string) (io.ReadCloser, error) {
+	container.Lock()
+	defer container.Unlock()
+	var err error
 	if err := container.Mount(); err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err != nil {
+			container.Unmount()
+		}
+	}()
+
+	if err = container.mountVolumes(); err != nil {
+		container.unmountVolumes()
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			container.unmountVolumes()
+		}
+	}()
 
 	basePath, err := container.getResourcePath(resource)
 	if err != nil {
-		container.Unmount()
 		return nil, err
-	}
-
-	// Check if this is actually in a volume
-	for _, mnt := range container.VolumeMounts() {
-		if len(mnt.MountToPath) > 0 && strings.HasPrefix(resource, mnt.MountToPath[1:]) {
-			return mnt.Export(resource)
-		}
-	}
-
-	// Check if this is a special one (resolv.conf, hostname, ..)
-	if resource == "etc/resolv.conf" {
-		basePath = container.ResolvConfPath
-	}
-	if resource == "etc/hostname" {
-		basePath = container.HostnamePath
-	}
-	if resource == "etc/hosts" {
-		basePath = container.HostsPath
 	}
 
 	stat, err := os.Stat(basePath)
 	if err != nil {
-		container.Unmount()
 		return nil, err
 	}
 	var filter []string
@@ -1052,11 +1054,12 @@ func (container *Container) Copy(resource string) (io.ReadCloser, error) {
 		IncludeFiles: filter,
 	})
 	if err != nil {
-		container.Unmount()
 		return nil, err
 	}
+
 	return ioutils.NewReadCloserWrapper(archive, func() error {
 			err := archive.Close()
+			container.unmountVolumes()
 			container.Unmount()
 			return err
 		}),
@@ -1464,6 +1467,12 @@ func (container *Container) startLogging() error {
 		l = dl
 	case "syslog":
 		dl, err := syslog.New(container.ID[:12])
+		if err != nil {
+			return err
+		}
+		l = dl
+	case "journald":
+		dl, err := journald.New(container.ID[:12])
 		if err != nil {
 			return err
 		}

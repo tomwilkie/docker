@@ -1,9 +1,9 @@
-page_title: Participate in the PR Review
+page_title: Participate in the PR review
 page_description: Basic workflow for Docker contributions
 page_keywords: contribute, pull request, review, workflow, beginner, squash, commit
 
 
-# Participate in the PR Review
+# Participate in the PR review
 
 Creating a pull request is nearly the end of the contribution process. At this
 point, your code is reviewed both by our continuous integration (CI) systems and
@@ -14,7 +14,7 @@ work on Docker.  You need to understand and work with both the "bots" and the
 "beings" to review your contribution.
 
 
-## How we proces your review
+## How we process your review
 
 First to review your pull request is Gordon. Gordon is fast. He checks your
 pull request (PR) for common problems like a missing signature. If Gordon finds a
@@ -45,7 +45,7 @@ So, they value your time and will try to work efficiently with you by keeping
 their comments specific and brief. If they ask you to make a change, you'll
 need to update your pull request with additional changes.
 
-## Update an Existing Pull Request
+## Update an existing pull request
 
 To update your existing pull request:
 
