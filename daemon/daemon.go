@@ -115,7 +115,6 @@ type Daemon struct {
 	RegistryService  *registry.Service
 	EventsService    *events.Events
 	networkCtrlr     libnetwork.NetworkController
-	libnetworks      []libnetwork.Network
 }
 
 // Install installs daemon capabilities to eng.
@@ -610,19 +609,19 @@ func (daemon *Daemon) newContainer(name string, config *runconfig.Config, imgID 
 
 	container := &Container{
 		// FIXME: we should generate the ID here instead of receiving it as an argument
-		ID:              id,
-		Created:         time.Now().UTC(),
-		Path:            entrypoint,
-		Args:            args, //FIXME: de-duplicate from config
-		Config:          config,
-		hostConfig:      &runconfig.HostConfig{},
-		ImageID:         imgID,
-		NetworkSettings: &network.Settings{},
-		Name:            name,
-		Driver:          daemon.driver.String(),
-		ExecDriver:      daemon.execDriver.Name(),
-		State:           NewState(),
-		execCommands:    newExecStore(),
+		ID:                  id,
+		Created:             time.Now().UTC(),
+		Path:                entrypoint,
+		Args:                args, //FIXME: de-duplicate from config
+		Config:              config,
+		hostConfig:          &runconfig.HostConfig{},
+		ImageID:             imgID,
+		NetworkSettings:     &network.Settings{},
+		Name:                name,
+		Driver:              daemon.driver.String(),
+		ExecDriver:          daemon.execDriver.Name(),
+		State:               NewState(),
+		execCommands:        newExecStore(),
 		LibNetworkEndpoints: endpoints,
 	}
 	container.root = daemon.containerRoot(container.ID)

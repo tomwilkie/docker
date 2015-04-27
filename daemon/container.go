@@ -19,7 +19,7 @@ import (
 	"github.com/docker/libcontainer/devices"
 	"github.com/docker/libcontainer/label"
 	"github.com/docker/libnetwork"
-	"github.com/docker/libnetwork/driverapi"
+	"github.com/docker/libnetwork/sandbox"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/execdriver"
@@ -266,18 +266,18 @@ func getDevicesFromPath(deviceMapping runconfig.DeviceMapping) (devs []*configs.
 	return devs, fmt.Errorf("error gathering device information while adding custom device %q: %s", deviceMapping.PathOnHost, err)
 }
 
-func InterfaceOf(sbinfo *driverapi.SandboxInfo) ([]*execdriver.NetworkInterface, error) {
+func InterfaceOf(sbinfo *sandbox.Info) ([]*execdriver.NetworkInterface, error) {
 	var results []*execdriver.NetworkInterface
 	for _, inf := range sbinfo.Interfaces {
 		prefixLen, _ := inf.Address.Mask.Size()
 		results = append(results, &execdriver.NetworkInterface{
-			Strategy:             "existing",
-			ExistingDevice:       inf.SrcName,
+			Strategy:       "existing",
+			ExistingDevice: inf.SrcName,
 
-			Gateway:              "",
-			IPAddress:            inf.Address.IP.String(),
-			IPPrefixLen:          prefixLen,
-			MacAddress:           inf.MACAddress,
+			Gateway:     "",
+			IPAddress:   inf.Address.IP.String(),
+			IPPrefixLen: prefixLen,
+			//MacAddress:           inf.MACAddress,
 		})
 	}
 	return results, nil
