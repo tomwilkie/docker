@@ -19,7 +19,7 @@ func optionsOf(labels map[string]string) options.Generic {
 	return options
 }
 
-func (daemon *Daemon) LibNetworkCreate(name string, driver string, labels map[string]string) (string, error) {
+func (daemon *Daemon) NetworkCreate(name string, driver string, labels map[string]string) (string, error) {
 	netdriver, err := daemon.networkCtrlr.NewNetworkDriver(driver, optionsOf(labels))
 	if err != nil {
 		return "", err
@@ -31,16 +31,11 @@ func (daemon *Daemon) LibNetworkCreate(name string, driver string, labels map[st
 	}
 
 	// Naughty, piggy back on other network lock
-	daemon.networks.Lock()
-	defer daemon.networks.Unlock()
 	daemon.libnetworks = append(daemon.libnetworks, network)
 	return network.ID(), nil
 }
 
-func (daemon *Daemon) LibNetworkList() []types.NetworkResponse {
-	daemon.networks.Lock()
-	defer daemon.networks.Unlock()
-
+func (daemon *Daemon) NetworkList() []types.NetworkResponse {
 	var result []types.NetworkResponse
 	for _, network := range daemon.libnetworks {
 		result = append(result, types.NetworkResponse{
@@ -53,7 +48,7 @@ func (daemon *Daemon) LibNetworkList() []types.NetworkResponse {
 	return result
 }
 
-func (daemon *Daemon) LibNetworkGet(idOrName string) (int, libnetwork.Network, error) {
+func (daemon *Daemon) NetworkGet(idOrName string) (int, libnetwork.Network, error) {
 	for i, network := range daemon.libnetworks {
 		if network.ID() == idOrName || network.Name() == idOrName {
 			return i, network, nil
@@ -63,11 +58,8 @@ func (daemon *Daemon) LibNetworkGet(idOrName string) (int, libnetwork.Network, e
 	return 0, nil, fmt.Errorf("Not found")
 }
 
-func (daemon *Daemon) LibNetworkDestroy(idOrName string) error {
-	daemon.networks.Lock()
-	defer daemon.networks.Unlock()
-
-	i, network, err := daemon.LibNetworkGet(idOrName)
+func (daemon *Daemon) NetworkDestroy(idOrName string) error {
+	i, network, err := daemon.NetworkGet(idOrName)
 	if err != nil {
 		return err
 	}
@@ -81,7 +73,7 @@ func (daemon *Daemon) LibNetworkDestroy(idOrName string) error {
 }
 
 func (daemon *Daemon) endpointOnNetworkLib(namesOrId, containerID string, labels map[string]string) (libnetwork.Endpoint, error) {
-	_, network, err := daemon.LibNetworkGet(namesOrId)
+	_, network, err := daemon.NetworkGet(namesOrId)
 	if err != nil {
 		return nil, err
 	}
@@ -102,10 +94,7 @@ func (daemon *Daemon) endpointsOnNetworksLib(namesOrIds []string, containerID st
 	return result, nil
 }
 
-func (daemon *Daemon) LibNetworkPlug(containerID, nameOrId string, labels map[string]string) (string, error) {
-	daemon.networks.Lock()
-	defer daemon.networks.Unlock()
-
+func (daemon *Daemon) NetworkPlug(containerID, nameOrId string, labels map[string]string) (string, error) {
 	container, err := daemon.Get(containerID)
 	if err != nil {
 		return "", fmt.Errorf("Container '%s' not found", containerID)
@@ -133,10 +122,7 @@ func (c *Container) GetEndpointLib(nameOrID string) (int, libnetwork.Endpoint, e
 	return 0, nil, fmt.Errorf("Not found")
 }
 
-func (daemon *Daemon) LibNetworkUnplug(containedID, endpointID string) error {
-	daemon.networks.Lock()
-	defer daemon.networks.Unlock()
-
+func (daemon *Daemon) NetworkUnplug(containedID, endpointID string) error {
 	container, err := daemon.Get(containedID)
 	if err != nil {
 		return err

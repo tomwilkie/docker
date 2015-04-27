@@ -114,7 +114,6 @@ type Daemon struct {
 	defaultLogConfig runconfig.LogConfig
 	RegistryService  *registry.Service
 	EventsService    *events.Events
-	networks         NetworkRegistry
 	networkCtrlr     libnetwork.NetworkController
 	libnetworks      []libnetwork.Network
 }
@@ -374,9 +373,6 @@ func (daemon *Daemon) restore() error {
 		}
 		logrus.Info("Loading containers: done.")
 	}
-
-	// Networks must be loaded after containers, as some of the drivers might be containers
-	daemon.networks.Restore()
 
 	return nil
 }
@@ -993,7 +989,6 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine, registryService 
 		defaultLogConfig: config.LogConfig,
 		RegistryService:  registryService,
 		EventsService:    eventsService,
-		networks:         NewNetworkRegistry(networkRepoPath),
 		networkCtrlr:     libnetwork.New(),
 	}
 
@@ -1037,8 +1032,6 @@ func (daemon *Daemon) shutdown() error {
 		}
 	}
 	group.Wait()
-
-	daemon.networks.Shutdown()
 
 	return nil
 }

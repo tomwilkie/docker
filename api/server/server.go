@@ -39,10 +39,6 @@ import (
 	"github.com/docker/docker/utils"
 )
 
-const (
-	useLibNetwork = true
-)
-
 type ServerConfig struct {
 	Logging     bool
 	EnableCors  bool
@@ -663,12 +659,7 @@ func (s *Server) getNetworksJSON(eng *engine.Engine, version version.Version, w 
 		return err
 	}
 
-	var networks []types.NetworkResponse
-	if useLibNetwork {
-		networks = s.daemon.LibNetworkList()
-	} else {
-		networks = s.daemon.NetworkList()
-	}
+	networks := s.daemon.NetworkList()
 	return writeJSON(w, http.StatusOK, networks)
 }
 
@@ -1059,11 +1050,7 @@ func (s *Server) deleteNetworks(eng *engine.Engine, version version.Version, w h
 		return err
 	}
 
-	if useLibNetwork {
-		return s.daemon.LibNetworkDestroy(vars["name"])
-	} else {
-		return s.daemon.NetworkDestroy(vars["name"])
-	}
+	return s.daemon.NetworkDestroy(vars["name"])
 }
 
 func (s *Server) postContainersStart(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
@@ -1285,13 +1272,7 @@ func (s *Server) postNetworkCreate(eng *engine.Engine, version version.Version, 
 		return err
 	}
 
-	var id string
-	if useLibNetwork {
-		id, err = s.daemon.LibNetworkCreate(vars["name"], driver, labels)
-	} else {
-		id, err = s.daemon.NetworkCreate(vars["name"], driver, labels)
-	}
-
+	id, err := s.daemon.NetworkCreate(vars["name"], driver, labels)
 	if err != nil {
 		return err
 	}
@@ -1316,12 +1297,7 @@ func (s *Server) postNetworkPlug(eng *engine.Engine, version version.Version, w 
 		return err
 	}
 
-	var id string
-	if useLibNetwork {
-		id, err = s.daemon.LibNetworkPlug(vars["name"], vars["network"], labels)
-	} else {
-		id, err = s.daemon.NetworkPlug(vars["name"], vars["network"], labels)
-	}
+	id, err := s.daemon.NetworkPlug(vars["name"], vars["network"], labels)
 
 	return writeJSON(w, http.StatusCreated, &types.NetworkPlugResponse{
 		ID: id,
@@ -1333,11 +1309,7 @@ func (s *Server) postNetworkUnplug(eng *engine.Engine, version version.Version, 
 		return err
 	}
 
-	if useLibNetwork {
-		return s.daemon.NetworkUnplug(vars["name"], vars["endpoint"])
-	} else {
-		return s.daemon.NetworkUnplug(vars["name"], vars["endpoint"])
-	}
+	return s.daemon.NetworkUnplug(vars["name"], vars["endpoint"])
 }
 
 func (s *Server) wsContainersAttach(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
