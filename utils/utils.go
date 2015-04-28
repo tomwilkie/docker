@@ -128,12 +128,14 @@ type WriteFlusher struct {
 	sync.Mutex
 	w       io.Writer
 	flusher http.Flusher
+	flushed bool
 }
 
 func (wf *WriteFlusher) Write(b []byte) (n int, err error) {
 	wf.Lock()
 	defer wf.Unlock()
 	n, err = wf.w.Write(b)
+	wf.flushed = true
 	wf.flusher.Flush()
 	return n, err
 }
@@ -142,7 +144,14 @@ func (wf *WriteFlusher) Write(b []byte) (n int, err error) {
 func (wf *WriteFlusher) Flush() {
 	wf.Lock()
 	defer wf.Unlock()
+	wf.flushed = true
 	wf.flusher.Flush()
+}
+
+func (wf *WriteFlusher) Flushed() bool {
+	wf.Lock()
+	defer wf.Unlock()
+	return wf.flushed
 }
 
 func NewWriteFlusher(w io.Writer) *WriteFlusher {
@@ -228,16 +237,6 @@ func ReplaceOrAppendEnvValues(defaults, overrides []string) []string {
 	}
 
 	return defaults
-}
-
-func DoesEnvExist(name string) bool {
-	for _, entry := range os.Environ() {
-		parts := strings.SplitN(entry, "=", 2)
-		if parts[0] == name {
-			return true
-		}
-	}
-	return false
 }
 
 // ValidateContextDirectory checks if all the contents of the directory

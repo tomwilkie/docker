@@ -4,7 +4,9 @@ set -eux
 
 docker rm $(docker ps -a -q) || true
 
+docker net configure bridge
+NETWORK=$(docker net create --driver=bridge)
+
 CONTAINER=$(docker create ubuntu)
-NETWORK=$(docker net create --driver=simplebridge)
 docker net plug $CONTAINER $NETWORK
 docker start $CONTAINER

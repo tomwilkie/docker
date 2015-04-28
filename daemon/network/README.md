@@ -9,6 +9,7 @@ This document contains notes pertaining to Weavework's proof of concept implemen
     git clone --branch existing_strategy http://github.com/tomwilkie/libcontainer docker/vendor/src/github.com/docker/libcontainer
     mkdir docker/vendor/src/github.com/vishvananda
     git clone http://github.com/vishvananda/netlink.git docker/vendor/src/github.com/vishvananda/netlink
+    git clone http://github.com/vishvananda/netns.git docker/vendor/src/github.com/vishvananda/netns
     cd docker
     make
     sudo ./bundles/1.7.0-plugins/binary/docker -dD
@@ -45,45 +46,109 @@ This document contains notes pertaining to Weavework's proof of concept implemen
 
 # Basic walkthrough:
 
-# docker net create --driver simplebridge
+
+    # docker net create --driver bridge
     67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1
-# docker net list
+    # docker net list
     NETWORK ID                                                         NAME                DRIVER              LABELS
-    67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1   stupefied_fermi     noop                {}
-# docker create -i ubuntu /bin/bash
+    67ea60624dfc1a6c08ba141c6cc022265e6fff81a44668c0135830a92de0b5e1   stupefied_fermi     bridge              {}
+    # docker create -i ubuntu /bin/bash
     5e24637c4a1a8cfd2d5b44a1041496b9a599ba986349b636fd615126bd3e9a82
-# docker ps -a
+    # docker ps -a
     CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
     5e24637c4a1a        ubuntu:latest       "/bin/bash"         4 seconds ago                                               backstabbing_hopper
-# docker net plug backstabbing_hopper stupefied_fermi
+    # docker net plug backstabbing_hopper stupefied_fermi
     5a624939c64c751c6276f852c2a01e54de49ba2894d922a07feebd2c56834900
-# docker start -i backstabbing_hopper
-````
-ifconfig -a
-eth0      Link encap:Ethernet  HWaddr 02:42:0a:00:00:02
-          inet addr:10.0.0.2  Bcast:0.0.0.0  Mask:255.255.0.0
-          inet6 addr: fe80::42:aff:fe00:2/64 Scope:Link
-          UP BROADCAST RUNNING  MTU:1500  Metric:1
-          RX packets:16 errors:0 dropped:0 overruns:0 frame:0
-          TX packets:8 errors:0 dropped:0 overruns:0 carrier:0
-          collisions:0 txqueuelen:0
-          RX bytes:1296 (1.2 KB)  TX bytes:648 (648.0 B)
+    # docker start -i backstabbing_hopper
+    >
+    > ifconfig -a
+    eth0      Link encap:Ethernet  HWaddr 02:42:0a:00:00:02
+              inet addr:10.0.0.2  Bcast:0.0.0.0  Mask:255.255.0.0
+              inet6 addr: fe80::42:aff:fe00:2/64 Scope:Link
+              UP BROADCAST RUNNING  MTU:1500  Metric:1
+              RX packets:16 errors:0 dropped:0 overruns:0 frame:0
+              TX packets:8 errors:0 dropped:0 overruns:0 carrier:0
+              collisions:0 txqueuelen:0
+              RX bytes:1296 (1.2 KB)  TX bytes:648 (648.0 B)
 
-eth1      Link encap:Ethernet  HWaddr 02:42:0a:03:00:01
-          inet addr:10.0.0.6  Bcast:0.0.0.0  Mask:255.255.0.0
-          inet6 addr: fe80::42:aff:fe03:1/64 Scope:Link
-          UP BROADCAST RUNNING  MTU:1500  Metric:1
-          RX packets:15 errors:0 dropped:0 overruns:0 frame:0
-          TX packets:8 errors:0 dropped:0 overruns:0 carrier:0
-          collisions:0 txqueuelen:0
-          RX bytes:1206 (1.2 KB)  TX bytes:648 (648.0 B)
+    eth1      Link encap:Ethernet  HWaddr 02:42:0a:03:00:01
+              inet addr:10.0.0.6  Bcast:0.0.0.0  Mask:255.255.0.0
+              inet6 addr: fe80::42:aff:fe03:1/64 Scope:Link
+              UP BROADCAST RUNNING  MTU:1500  Metric:1
+              RX packets:15 errors:0 dropped:0 overruns:0 frame:0
+              TX packets:8 errors:0 dropped:0 overruns:0 carrier:0
+              collisions:0 txqueuelen:0
+              RX bytes:1206 (1.2 KB)  TX bytes:648 (648.0 B)
 
-lo        Link encap:Local Loopback
-          inet addr:127.0.0.1  Mask:255.0.0.0
-          inet6 addr: ::1/128 Scope:Host
-          UP LOOPBACK RUNNING  MTU:65536  Metric:1
-          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
-          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
-          collisions:0 txqueuelen:0
-          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
-````
+    lo        Link encap:Local Loopback
+              inet addr:127.0.0.1  Mask:255.0.0.0
+              inet6 addr: ::1/128 Scope:Host
+              UP LOOPBACK RUNNING  MTU:65536  Metric:1
+              RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+              TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+              collisions:0 txqueuelen:0
+              RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+# Example usecases / potential network plugins
+Given weird usecase A, how might I implement a plugin to achieve it?
+
+## Simple bridging
+
+Usecase: User is running on single host, and wants to let containers talk to each other.
+
+Potential implementation:
+- Driver would create a bridge per network with arbitrary subnet.
+- Driver would give each interface on network a unique IP
+
+Alternative:
+- Everyone connects to the same bridge
+- Different networks = different ip allocators and subnets
+
+## NAT
+
+Usecase: User is running on single host, want containers to access internet using NAT
+
+Potential implementation:
+- As above; driver could configure nat for the bridge
+- Driver will need to offer a default route.
+
+## ‘Real’ IP per container
+
+Usecase: User is running container host on network with DHCP, DNS etc.  Wants each container to just grab address via DHCP, and effectively be first class citizens on external network.  Wants to allow containers to talk to everything…
+
+
+Potential implementation:
+- NB this is how VMWare, XenServer tend to operate.  Hosts must be able to spoof macs, which precludes doing this on EC2, GCE
+- Driver would create bridge, and add the physical interface to it.
+  - Would also need to add veth pair for host OS with hosts original MAC?  Or can original IP be copied to bridge device?
+- Driver could also do DHCP request on interface plug, so each container isn’t required to run a dhcp client.  Results (host name, routes etc) would be returned from plugin to weave.
+- Drivers would need to be able to do things like set containers router, nameserver, default search path - everything dhcp can do.
+- User would probably want to pass mac address to plugin on create/attach, so they have some control of IP address and name.
+- Won’t work on the cloud...
+
+## External VLANs
+
+Usecase: User is running container host on network with VLANs.  Wants to be able to attach a container to a physical VLAN.  Want containers to just grab address via DHCP, and effectively be first class citizens on external network.
+
+Potential implementation:
+- Ad above - one bridge, different vlans could be different network
+- veth pair would need to set and clear the vlan fields in frame headers.
+
+## Weave
+
+Usecase: User is on a network which won’t give him IPs, and wants to allow containers on communicate across hosts.
+
+Potential implementation
+- Single weave overlay network, different networks are different subnets
+
+Or:
+- Multiple weave overlay networks, one per network.
+
+## Google-esqe
+
+Usecase: User wants to map different ports on the host to different containers; wants to allow containers to talk to each other on the ‘real’ network.
+
+Potential implementation:
+- Firewall rules; interface represents a firewall rule allowing processes in container to listen on said port. ?
+- Or could be done with NATing.  Container won’t know real ip address... ?
+- I don't know

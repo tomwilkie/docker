@@ -143,6 +143,7 @@ func runCommandPipelineWithOutput(cmds ...*exec.Cmd) (output string, exitCode in
 		if i > 0 {
 			prevCmd := cmds[i-1]
 			cmd.Stdin, err = prevCmd.StdoutPipe()
+
 			if err != nil {
 				return "", 0, fmt.Errorf("cannot set stdout pipe for %s: %v", cmd.Path, err)
 			}
@@ -165,10 +166,6 @@ func runCommandPipelineWithOutput(cmds ...*exec.Cmd) (output string, exitCode in
 
 	// wait on last cmd
 	return runCommandWithOutput(cmds[len(cmds)-1])
-}
-
-func logDone(message string) {
-	fmt.Printf("[PASSED]: %.69s\n", message)
 }
 
 func unmarshalJSON(data []byte, result interface{}) error {

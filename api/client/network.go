@@ -14,6 +14,25 @@ import (
 // CmdNetCreate creates a new network.
 //
 // Usage: docker net create [OPTIONS] CONTAINER
+func (cli *DockerCli) CmdNetConfigure(args ...string) error {
+	var (
+		cmd    = cli.Subcmd("net configure", "DRIVER", "Create a network driver", true)
+		labels = opts.NewListOpts(opts.ValidateEnv)
+	)
+	cmd.Var(&labels, []string{"l", "-label"}, "Set meta data on a container")
+	cmd.Require(flag.Exact, 1)
+	cmd.ParseFlags(args, true)
+
+	values := make(map[string]interface{})
+	values["Labels"] = runconfig.ConvertKVStringsToMap(labels.GetAll())
+	values["Driver"] = cmd.Arg(0)
+	_, _, err := cli.call("POST", "/networks/configure", values, nil)
+	return err
+}
+
+// CmdNetCreate creates a new network.
+//
+// Usage: docker net create [OPTIONS] CONTAINER
 func (cli *DockerCli) CmdNetCreate(args ...string) error {
 	var (
 		cmd    = cli.Subcmd("net create", "", "Create a new network", true)
@@ -27,11 +46,10 @@ func (cli *DockerCli) CmdNetCreate(args ...string) error {
 
 	values := make(map[string]interface{})
 	values["Labels"] = runconfig.ConvertKVStringsToMap(labels.GetAll())
-	if *driver != "" {
-		values["Driver"] = *driver
-	}
+	values["Name"] = *name
+	values["Driver"] = *driver
 
-	stream, _, err := cli.call("POST", "/networks/"+*name, values, nil)
+	stream, _, err := cli.call("POST", "/networks/create", values, nil)
 	if err != nil {
 		return err
 	}

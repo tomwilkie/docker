@@ -9,6 +9,7 @@ import (
 	"github.com/docker/libnetwork/pkg/options"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/plugins"
 )
 
 func optionsOf(labels map[string]string) options.Generic {
@@ -19,69 +20,59 @@ func optionsOf(labels map[string]string) options.Generic {
 	return options
 }
 
-func (daemon *Daemon) LibNetworkCreate(name string, driver string, labels map[string]string) (string, error) {
-	netdriver, err := daemon.networkCtrlr.NewNetworkDriver(driver, optionsOf(labels))
+func (daemon *Daemon) NetworkConfigure(driver string, labels map[string]string) error {
+	return daemon.networkCtrlr.ConfigureNetworkDriver(driver, optionsOf(labels))
+}
+
+func (daemon *Daemon) NetworkCreate(name string, driver string, labels map[string]string) (string, error) {
+	network, err := daemon.networkCtrlr.NewNetwork(driver, name, optionsOf(labels))
 	if err != nil {
 		return "", err
 	}
-
-	network, err := daemon.networkCtrlr.NewNetwork(netdriver, name, optionsOf(labels))
-	if err != nil {
-		return "", err
-	}
-
-	// Naughty, piggy back on other network lock
-	daemon.networks.Lock()
-	defer daemon.networks.Unlock()
-	daemon.libnetworks = append(daemon.libnetworks, network)
 	return network.ID(), nil
 }
 
-func (daemon *Daemon) LibNetworkList() []types.NetworkResponse {
-	daemon.networks.Lock()
-	defer daemon.networks.Unlock()
-
+func (daemon *Daemon) NetworkList() []types.NetworkResponse {
 	var result []types.NetworkResponse
-	for _, network := range daemon.libnetworks {
+	daemon.networkCtrlr.WalkNetworks(func(network libnetwork.Network) bool {
 		result = append(result, types.NetworkResponse{
 			ID:     network.ID(),
 			Name:   network.Name(),
 			Driver: network.Type(),
 			//Labels: net.Labels(),
 		})
-	}
+		return false
+	})
 	return result
 }
 
-func (daemon *Daemon) LibNetworkGet(idOrName string) (int, libnetwork.Network, error) {
-	for i, network := range daemon.libnetworks {
-		if network.ID() == idOrName || network.Name() == idOrName {
-			return i, network, nil
+func (daemon *Daemon) NetworkGet(idOrName string) (libnetwork.Network, error) {
+	var network libnetwork.Network
+	found := daemon.networkCtrlr.WalkNetworks(func(candidate libnetwork.Network) bool {
+		if candidate.ID() == idOrName || candidate.Name() == idOrName {
+			network = candidate
+			return true
 		}
-	}
+		return false
+	})
 
-	return 0, nil, fmt.Errorf("Not found")
+	if found {
+		return network, nil
+	}
+	return nil, fmt.Errorf("Not found")
 }
 
-func (daemon *Daemon) LibNetworkDestroy(idOrName string) error {
-	daemon.networks.Lock()
-	defer daemon.networks.Unlock()
-
-	i, network, err := daemon.LibNetworkGet(idOrName)
+func (daemon *Daemon) NetworkDestroy(idOrName string) error {
+	network, err := daemon.NetworkGet(idOrName)
 	if err != nil {
 		return err
 	}
 
-	if err := network.Delete(); err != nil {
-		return err
-	}
-
-	daemon.libnetworks = daemon.libnetworks[:i+copy(daemon.libnetworks[i:], daemon.libnetworks[i+1:])]
-	return nil
+	return network.Delete()
 }
 
 func (daemon *Daemon) endpointOnNetworkLib(namesOrId, containerID string, labels map[string]string) (libnetwork.Endpoint, error) {
-	_, network, err := daemon.LibNetworkGet(namesOrId)
+	network, err := daemon.NetworkGet(namesOrId)
 	if err != nil {
 		return nil, err
 	}
@@ -102,10 +93,7 @@ func (daemon *Daemon) endpointsOnNetworksLib(namesOrIds []string, containerID st
 	return result, nil
 }
 
-func (daemon *Daemon) LibNetworkPlug(containerID, nameOrId string, labels map[string]string) (string, error) {
-	daemon.networks.Lock()
-	defer daemon.networks.Unlock()
-
+func (daemon *Daemon) NetworkPlug(containerID, nameOrId string, labels map[string]string) (string, error) {
 	container, err := daemon.Get(containerID)
 	if err != nil {
 		return "", fmt.Errorf("Container '%s' not found", containerID)
@@ -133,10 +121,7 @@ func (c *Container) GetEndpointLib(nameOrID string) (int, libnetwork.Endpoint, e
 	return 0, nil, fmt.Errorf("Not found")
 }
 
-func (daemon *Daemon) LibNetworkUnplug(containedID, endpointID string) error {
-	daemon.networks.Lock()
-	defer daemon.networks.Unlock()
-
+func (daemon *Daemon) NetworkUnplug(containedID, endpointID string) error {
 	container, err := daemon.Get(containedID)
 	if err != nil {
 		return err
@@ -157,5 +142,10 @@ func (daemon *Daemon) LibNetworkUnplug(containedID, endpointID string) error {
 
 	container.LibNetworkEndpoints = container.LibNetworkEndpoints[:i+copy(
 		container.LibNetworkEndpoints[i:], container.LibNetworkEndpoints[i+1:])]
+	return nil
+}
+
+func (daemon *Daemon) registerLibNet(name string, plugin *plugins.Plugin) error {
+	daemon.networkCtrlr.RegisterExternalDriver(name, plugin)
 	return nil
 }

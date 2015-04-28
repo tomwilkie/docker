@@ -19,11 +19,12 @@ import (
 	"github.com/docker/libcontainer/devices"
 	"github.com/docker/libcontainer/label"
 	"github.com/docker/libnetwork"
-	"github.com/docker/libnetwork/driverapi"
+	"github.com/docker/libnetwork/sandbox"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/execdriver"
 	"github.com/docker/docker/daemon/logger"
+	"github.com/docker/docker/daemon/logger/journald"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
 	"github.com/docker/docker/daemon/logger/syslog"
 	"github.com/docker/docker/daemon/network"
@@ -114,7 +115,6 @@ type Container struct {
 	logCopier          *logger.Copier
 	AppliedVolumesFrom map[string]struct{}
 
-	Endpoints          []*Endpoint
 	LibNetworkEndpoints []libnetwork.Endpoint
 }
 
@@ -185,11 +185,13 @@ func (container *Container) readHostConfig() error {
 		return nil
 	}
 
-	data, err := ioutil.ReadFile(pth)
+	f, err := os.Open(pth)
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(data, container.hostConfig)
+	defer f.Close()
+
+	return json.NewDecoder(f).Decode(&container.hostConfig)
 }
 
 func (container *Container) WriteHostConfig() error {
@@ -264,18 +266,18 @@ func getDevicesFromPath(deviceMapping runconfig.DeviceMapping) (devs []*configs.
 	return devs, fmt.Errorf("error gathering device information while adding custom device %q: %s", deviceMapping.PathOnHost, err)
 }
 
-func InterfaceOf(sbinfo *driverapi.SandboxInfo) ([]*execdriver.NetworkInterface, error) {
+func InterfaceOf(sbinfo *sandbox.Info) ([]*execdriver.NetworkInterface, error) {
 	var results []*execdriver.NetworkInterface
 	for _, inf := range sbinfo.Interfaces {
 		prefixLen, _ := inf.Address.Mask.Size()
 		results = append(results, &execdriver.NetworkInterface{
-			Strategy:             "existing",
-			ExistingDevice:       inf.SrcName,
+			Strategy:       "existing",
+			ExistingDevice: inf.SrcName,
 
-			Gateway:              "",
-			IPAddress:            inf.Address.IP.String(),
-			IPPrefixLen:          prefixLen,
-			MacAddress:           inf.MACAddress,
+			Gateway:     "",
+			IPAddress:   inf.Address.IP.String(),
+			IPPrefixLen: prefixLen,
+			//MacAddress:           inf.MACAddress,
 		})
 	}
 	return results, nil
@@ -315,15 +317,6 @@ func populateCommand(c *Container, env []string) error {
 		en.ContainerID = nc.ID
 	default:
 		return fmt.Errorf("invalid network mode: %s", c.hostConfig.NetworkMode)
-	}
-
-	// Plug enpoints for new network model
-	for _, endpoint := range c.Endpoints {
-		inf, err := endpoint.Plug(c.daemon)
-		if err != nil {
-			return err
-		}
-		en.Interfaces = append(en.Interfaces, inf)
 	}
 
 	// Plug enpoints for libnetwork
@@ -399,6 +392,7 @@ func populateCommand(c *Container, env []string) error {
 		CpuShares:  c.hostConfig.CpuShares,
 		CpusetCpus: c.hostConfig.CpusetCpus,
 		CpusetMems: c.hostConfig.CpusetMems,
+		CpuQuota:   c.hostConfig.CpuQuota,
 		Rlimits:    rlimits,
 	}
 
@@ -733,12 +727,6 @@ func (container *Container) cleanup() {
 		logrus.Errorf("%v: Failed to umount filesystem: %v", container.ID, err)
 	}
 
-	for _, endpoint := range container.Endpoints {
-		if err := endpoint.Unplug(container.daemon); err != nil {
-			logrus.Errorf("%v: Failed to unplug enpoint %s - %s", container.ID, endpoint.ID, err)
-		}
-	}
-
 	for _, eConfig := range container.execCommands.s {
 		container.daemon.unregisterExecCommand(eConfig)
 	}
@@ -1004,37 +992,35 @@ func (container *Container) GetSize() (int64, int64) {
 }
 
 func (container *Container) Copy(resource string) (io.ReadCloser, error) {
+	container.Lock()
+	defer container.Unlock()
+	var err error
 	if err := container.Mount(); err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err != nil {
+			container.Unmount()
+		}
+	}()
+
+	if err = container.mountVolumes(); err != nil {
+		container.unmountVolumes()
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			container.unmountVolumes()
+		}
+	}()
 
 	basePath, err := container.getResourcePath(resource)
 	if err != nil {
-		container.Unmount()
 		return nil, err
-	}
-
-	// Check if this is actually in a volume
-	for _, mnt := range container.VolumeMounts() {
-		if len(mnt.MountToPath) > 0 && strings.HasPrefix(resource, mnt.MountToPath[1:]) {
-			return mnt.Export(resource)
-		}
-	}
-
-	// Check if this is a special one (resolv.conf, hostname, ..)
-	if resource == "etc/resolv.conf" {
-		basePath = container.ResolvConfPath
-	}
-	if resource == "etc/hostname" {
-		basePath = container.HostnamePath
-	}
-	if resource == "etc/hosts" {
-		basePath = container.HostsPath
 	}
 
 	stat, err := os.Stat(basePath)
 	if err != nil {
-		container.Unmount()
 		return nil, err
 	}
 	var filter []string
@@ -1052,11 +1038,12 @@ func (container *Container) Copy(resource string) (io.ReadCloser, error) {
 		IncludeFiles: filter,
 	})
 	if err != nil {
-		container.Unmount()
 		return nil, err
 	}
+
 	return ioutils.NewReadCloserWrapper(archive, func() error {
 			err := archive.Close()
+			container.unmountVolumes()
 			container.Unmount()
 			return err
 		}),
@@ -1468,6 +1455,12 @@ func (container *Container) startLogging() error {
 			return err
 		}
 		l = dl
+	case "journald":
+		dl, err := journald.New(container.ID[:12])
+		if err != nil {
+			return err
+		}
+		l = dl
 	case "none":
 		return nil
 	default:
@@ -1625,15 +1618,6 @@ func (c *Container) LogDriverType() string {
 		return c.daemon.defaultLogConfig.Type
 	}
 	return c.hostConfig.LogConfig.Type
-}
-
-func (c *Container) GetEndpoint(id string) (int, *Endpoint) {
-	for i, e := range c.Endpoints {
-		if e.ID == id {
-			return i, e
-		}
-	}
-	return -1, nil
 }
 
 func (container *Container) getPluginSocketPath() (string, error) {

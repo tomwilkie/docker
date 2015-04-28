@@ -9,15 +9,16 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"text/template"
 	"time"
 
+	"github.com/docker/docker/cliconfig"
 	"github.com/docker/docker/pkg/homedir"
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/term"
-	"github.com/docker/docker/registry"
 )
 
 // DockerCli represents the docker command line client.
@@ -27,8 +28,9 @@ type DockerCli struct {
 	proto string
 	// addr holds the client address.
 	addr string
-	// configFile holds the configuration file (instance of registry.ConfigFile).
-	configFile *registry.ConfigFile
+
+	// configFile has the client configuration file
+	configFile *cliconfig.ConfigFile
 	// in holds the input stream and closer (io.ReadCloser) for the client.
 	in io.ReadCloser
 	// out holds the output stream (io.Writer) for the client.
@@ -96,6 +98,11 @@ func (cli *DockerCli) Cmd(args ...string) error {
 	return cli.CmdHelp()
 }
 
+// Subcmd is a subcommand of the main "docker" command.
+// A subcommand represents an action that can be performed
+// from the Docker command line client.
+//
+// To see all available subcommands, run "docker --help".
 func (cli *DockerCli) Subcmd(name, signature, description string, exitOnError bool) *flag.FlagSet {
 	var errorHandling flag.ErrorHandling
 	if exitOnError {
@@ -120,14 +127,8 @@ func (cli *DockerCli) Subcmd(name, signature, description string, exitOnError bo
 	return flags
 }
 
-func (cli *DockerCli) LoadConfigFile() (err error) {
-	cli.configFile, err = registry.LoadConfig(homedir.Get())
-	if err != nil {
-		fmt.Fprintf(cli.err, "WARNING: %s\n", err)
-	}
-	return err
-}
-
+// CheckTtyInput checks if we are trying to attach to a container tty
+// from a non-tty client input stream, and if so, returns an error.
 func (cli *DockerCli) CheckTtyInput(attachStdin, ttyMode bool) error {
 	// In order to attach to a container tty, input stream for the client must
 	// be a tty itself: redirecting or piping the client standard input is
@@ -184,9 +185,15 @@ func NewDockerCli(in io.ReadCloser, out, err io.Writer, keyFile string, proto, a
 		tr.Dial = (&net.Dialer{Timeout: timeout}).Dial
 	}
 
+	configFile, e := cliconfig.Load(filepath.Join(homedir.Get(), ".docker"))
+	if e != nil {
+		fmt.Fprintf(err, "WARNING: Error loading config file:%v\n", e)
+	}
+
 	return &DockerCli{
 		proto:         proto,
 		addr:          addr,
+		configFile:    configFile,
 		in:            in,
 		out:           out,
 		err:           err,
